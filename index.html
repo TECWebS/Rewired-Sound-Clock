@@ -1,0 +1,1653 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Rewired Sound Clock</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=Baloo+2:wght@500;600;700;800&display=swap" rel="stylesheet">
+<style>
+/* ===================== TOKENS ===================== */
+:root{
+  --deep-circuit:#0F414C;
+  --core-teal:#048A81;
+  --sea-glass:#8BCCB4;
+  --cloud:#CFE3E2;
+  --spark:#DB7F26;
+  --live-wire:#F7FFAE;
+  --white:#FFFFFF;
+  --ink:#0B2A30;
+  --ink-soft:#3E5F64;
+  --line:#C4D9D6;
+  --bg:#F5F9F8;
+  --card:#FFFFFF;
+  --radius-s:10px;
+  --radius-m:16px;
+  --radius-l:28px;
+  --shadow: 0 1px 2px rgba(15,65,76,.06), 0 8px 24px rgba(15,65,76,.08);
+  --font-display:'Space Grotesk', sans-serif;
+  --font-body:'Inter', sans-serif;
+  --font-playful:'Baloo 2', sans-serif;
+}
+:root[data-theme="dark"]{
+  --bg:#0B2226;
+  --card:#123339;
+  --ink:#EAF6F4;
+  --ink-soft:#9FC2C0;
+  --line:#1E4A51;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0B2226;
+    --card:#123339;
+    --ink:#EAF6F4;
+    --ink-soft:#9FC2C0;
+    --line:#1E4A51;
+  }
+}
+*{box-sizing:border-box;}
+html,body{height:100%;}
+body{
+  margin:0;
+  background:var(--bg);
+  color:var(--ink);
+  font-family:var(--font-body);
+  -webkit-font-smoothing:antialiased;
+  overflow-x:hidden;
+}
+button{font-family:inherit;}
+::selection{background:var(--live-wire);color:var(--deep-circuit);}
+a{color:inherit;}
+
+/* focus visibility */
+button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focus-visible{
+  outline:3px solid var(--spark);
+  outline-offset:2px;
+}
+
+@media (prefers-reduced-motion: reduce){
+  *{animation-duration:.001ms !important; animation-iteration-count:1 !important; transition-duration:.001ms !important;}
+}
+
+.hidden{display:none !important;}
+
+/* ===================== APP SHELL ===================== */
+#app{min-height:100%;}
+
+.topbar{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:18px clamp(16px,4vw,40px);
+  border-bottom:1px solid var(--line);
+  background:var(--card);
+  position:sticky;top:0;z-index:20;
+}
+.brand{display:flex;align-items:center;gap:10px;}
+.brand-mark{
+  width:34px;height:34px;border-radius:9px;
+  background:linear-gradient(155deg,var(--deep-circuit),var(--core-teal));
+  position:relative;flex:0 0 auto;
+}
+.brand-mark::before,.brand-mark::after{
+  content:"";position:absolute;background:var(--live-wire);border-radius:2px;
+}
+.brand-mark::before{width:14px;height:2px;top:11px;left:10px;}
+.brand-mark::after{width:2px;height:14px;top:10px;left:16px;}
+.brand-name{font-family:var(--font-display);font-weight:600;font-size:17px;letter-spacing:.2px;}
+.brand-sub{font-size:12px;color:var(--ink-soft);margin-top:-2px;}
+
+.profile-picker{display:flex;align-items:center;gap:10px;}
+select.profile-select{
+  border:1px solid var(--line);background:var(--bg);color:var(--ink);
+  border-radius:10px;padding:8px 10px;font-size:13.5px;font-weight:500;
+  max-width:38vw;
+}
+.icon-btn{
+  border:1px solid var(--line);background:var(--card);color:var(--ink);
+  border-radius:10px;padding:8px 12px;font-size:13px;font-weight:600;
+  cursor:pointer;transition:background .15s ease, transform .1s ease;
+}
+.icon-btn:hover{background:var(--cloud);}
+.icon-btn:active{transform:scale(.97);}
+.icon-btn.primary{background:var(--core-teal);border-color:var(--core-teal);color:#fff;}
+.icon-btn.primary:hover{background:#037469;}
+.icon-btn.ghost{background:transparent;border-color:transparent;}
+
+.layout{
+  display:grid;
+  grid-template-columns:220px 1fr;
+  max-width:1180px;margin:0 auto;
+}
+@media (max-width:820px){
+  .layout{grid-template-columns:1fr;}
+  .nav{
+    position:sticky;top:71px;z-index:15;
+    display:flex;overflow-x:auto;gap:6px;padding:10px clamp(16px,4vw,40px);
+    border-bottom:1px solid var(--line);background:var(--bg);
+  }
+  .nav a{white-space:nowrap;}
+}
+
+.nav{padding:28px 16px;display:flex;flex-direction:column;gap:4px;}
+.nav a{
+  display:flex;align-items:center;gap:10px;
+  padding:10px 14px;border-radius:10px;
+  color:var(--ink-soft);text-decoration:none;font-weight:600;font-size:14px;
+  cursor:pointer;
+}
+.nav a.active{background:var(--cloud);color:var(--deep-circuit);}
+.nav a:hover{background:var(--cloud);}
+
+main.panel{padding:28px clamp(16px,4vw,40px) 80px;}
+
+.eyebrow{font-size:12.5px;font-weight:600;color:var(--core-teal);margin:0 0 6px;}
+h1.page-title{font-family:var(--font-display);font-size:clamp(24px,3vw,32px);margin:0 0 6px;font-weight:600;}
+p.page-desc{color:var(--ink-soft);margin:0 0 28px;max-width:60ch;font-size:14.5px;line-height:1.55;}
+
+.card{
+  background:var(--card);border:1px solid var(--line);border-radius:var(--radius-m);
+  padding:20px clamp(16px,3vw,26px);box-shadow:var(--shadow);
+}
+.card + .card{margin-top:16px;}
+
+.field{margin-bottom:16px;}
+.field label{display:block;font-size:12.5px;font-weight:600;color:var(--ink-soft);margin-bottom:6px;}
+.field input[type=text], .field input[type=time], .field input[type=number], .field select{
+  width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;
+  background:var(--bg);color:var(--ink);font-size:14.5px;font-family:inherit;
+}
+.field .hint{font-size:12px;color:var(--ink-soft);margin-top:5px;}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+.row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;}
+@media (max-width:560px){.row2,.row3{grid-template-columns:1fr;}}
+
+.toggle-pair{display:inline-flex;border:1px solid var(--line);border-radius:12px;padding:3px;background:var(--bg);}
+.toggle-pair button{
+  border:none;background:transparent;padding:9px 16px;border-radius:9px;
+  font-weight:600;font-size:13.5px;color:var(--ink-soft);cursor:pointer;
+}
+.toggle-pair button.active{background:var(--deep-circuit);color:#fff;}
+
+.daytype-tabs{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;}
+.daytype-tab{
+  border:1.5px solid var(--line);background:var(--card);border-radius:12px;
+  padding:8px 14px;cursor:pointer;display:flex;flex-direction:column;align-items:flex-start;gap:3px;
+  min-width:120px;
+}
+.daytype-tab.active{border-color:var(--core-teal);background:rgba(4,138,129,.07);}
+.daytype-tab .dt-name{font-weight:600;font-size:13.5px;color:var(--ink);}
+.daytype-tab .dt-days{font-size:11px;color:var(--ink-soft);letter-spacing:.3px;}
+.daytype-tab-add{
+  border:1.5px dashed var(--line);background:transparent;border-radius:12px;
+  padding:8px 16px;cursor:pointer;color:var(--core-teal);font-weight:600;font-size:13px;
+  display:flex;align-items:center;
+}
+.weekday-row{display:flex;gap:6px;margin:6px 0 16px;flex-wrap:wrap;}
+.weekday-btn{
+  width:38px;height:38px;border-radius:10px;border:1.5px solid var(--line);background:var(--card);
+  font-weight:700;font-size:12.5px;color:var(--ink-soft);cursor:pointer;
+}
+.weekday-btn.on{background:var(--core-teal);border-color:var(--core-teal);color:#fff;}
+.daytype-name-row{display:flex;align-items:center;gap:10px;margin-bottom:4px;flex-wrap:wrap;}
+.daytype-name-row input[type=text]{
+  font-family:var(--font-display);font-weight:600;font-size:16px;border:none;background:transparent;
+  padding:4px 0;color:var(--ink);flex:1;min-width:160px;
+}
+.period-card{border:1px solid var(--line);border-radius:var(--radius-m);padding:18px;margin-bottom:14px;background:var(--bg);}
+.period-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;gap:10px;}
+.period-head input[type=text]{
+  border:none;background:transparent;font-family:var(--font-display);font-weight:600;font-size:17px;
+  padding:2px 0;color:var(--ink);width:auto;flex:1;min-width:0;
+}
+.chip-btn{
+  border:1px solid var(--line);background:var(--card);border-radius:8px;padding:6px 10px;font-size:12px;font-weight:600;
+  color:var(--ink-soft);cursor:pointer;
+}
+.chip-btn:hover{color:#B3452A;border-color:#e2b6a3;}
+
+.phase-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-top:8px;}
+@media (max-width:700px){.phase-grid{grid-template-columns:1fr;}}
+.phase-box{border:1px dashed var(--line);border-radius:12px;padding:12px;background:var(--card);}
+.phase-box .phase-label{font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;margin-bottom:8px;display:flex;align-items:center;gap:6px;}
+.dot{width:8px;height:8px;border-radius:50%;flex:0 0 auto;}
+.dot.entry{background:var(--sea-glass);}
+.dot.warmup{background:var(--core-teal);}
+.dot.exit{background:var(--spark);}
+.phase-box select{width:100%;margin-bottom:8px;font-size:13px;padding:8px 10px;}
+.phase-box .dur-row{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--ink-soft);}
+.phase-box .dur-row input{width:56px;padding:6px 8px;font-size:13px;border:1px solid var(--line);border-radius:7px;background:var(--bg);color:var(--ink);}
+
+.add-period-btn{
+  width:100%;border:1.5px dashed var(--core-teal);background:transparent;color:var(--core-teal);
+  border-radius:var(--radius-m);padding:14px;font-weight:600;font-size:14px;cursor:pointer;
+}
+.add-period-btn:hover{background:rgba(4,138,129,.06);}
+
+/* Sound library */
+.sound-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;}
+.sound-card{
+  border:1px solid var(--line);border-radius:14px;padding:14px;background:var(--card);
+  display:flex;flex-direction:column;gap:8px;
+}
+.sound-card .name{font-weight:600;font-size:14.5px;}
+.vibe-pill{
+  display:inline-flex;align-self:flex-start;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;
+  padding:3px 9px;border-radius:999px;color:#fff;
+}
+.vibe-upbeat{background:var(--spark);}
+.vibe-instrumental{background:var(--core-teal);}
+.vibe-whitenoise{background:#5B7B82;}
+.vibe-cleanup{background:#B3452A;}
+.play-row{display:flex;gap:8px;margin-top:auto;}
+.play-row button{flex:1;padding:8px 0;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font-weight:600;font-size:12.5px;cursor:pointer;}
+.play-row button.playing{background:var(--core-teal);color:#fff;border-color:var(--core-teal);}
+
+.upload-card{border:1.5px dashed var(--line);border-radius:14px;padding:16px;}
+.upload-card input[type=file]{font-size:12.5px;}
+
+/* streaming phase-2 */
+.stream-row{display:flex;align-items:center;justify-content:space-between;padding:14px 0;border-top:1px solid var(--line);}
+.stream-row:first-child{border-top:none;}
+.stream-left{display:flex;align-items:center;gap:12px;}
+.stream-badge{width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff;font-size:14px;}
+.stream-name{font-weight:600;font-size:14.5px;}
+.stream-status{font-size:12px;color:var(--ink-soft);}
+.pill-soon{font-size:11px;font-weight:700;color:var(--ink-soft);border:1px solid var(--line);border-radius:999px;padding:5px 11px;text-transform:uppercase;letter-spacing:.4px;}
+
+/* Start day CTA */
+.start-day-card{
+  background:linear-gradient(135deg,var(--deep-circuit),#0A2E36);
+  color:#fff;border-radius:var(--radius-l);padding:26px clamp(18px,3vw,30px);
+  display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap;
+  margin-bottom:22px;
+}
+.start-day-card h2{font-family:var(--font-display);margin:0 0 6px;font-size:20px;font-weight:600;}
+.start-day-card p{margin:0;color:#BFE0DC;font-size:13.5px;max-width:46ch;}
+.start-day-btn{
+  background:var(--spark);color:#fff;border:none;border-radius:14px;padding:14px 26px;
+  font-weight:700;font-size:15px;cursor:pointer;flex:0 0 auto;box-shadow:0 8px 20px rgba(219,127,38,.35);
+}
+.start-day-btn:hover{background:#c76f1c;}
+.start-day-btn:disabled{opacity:.55;cursor:default;box-shadow:none;}
+
+/* ===================== BOARD VIEW ===================== */
+#board{
+  position:fixed;inset:0;background:var(--deep-circuit);color:#fff;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  z-index:100;text-align:center;padding:24px;
+}
+#board.mode-lower{background:radial-gradient(circle at 50% 15%, #0d5158, var(--deep-circuit) 70%);}
+#board .exit-board{
+  position:absolute;top:18px;right:18px;background:rgba(255,255,255,.08);
+  border:1px solid rgba(255,255,255,.25);color:#fff;border-radius:10px;padding:8px 14px;
+  font-size:12.5px;font-weight:600;cursor:pointer;opacity:.55;transition:opacity .15s;
+}
+#board .exit-board:hover{opacity:1;}
+#board .circuit-bg{position:absolute;inset:0;opacity:.10;pointer-events:none;}
+#board .teacher-line{font-size:14px;letter-spacing:.4px;color:#9FD7CE;margin-bottom:10px;font-weight:600;}
+#board .phase-pill{
+  font-family:var(--font-display);
+  display:inline-flex;align-items:center;gap:10px;
+  padding:10px 22px;border-radius:999px;font-weight:600;font-size:16px;
+  margin-bottom:22px;border:1.5px solid rgba(255,255,255,.35);
+}
+#board .phase-pill .dot{width:10px;height:10px;}
+#board .countdown{
+  font-family:var(--font-display);font-weight:700;font-size:clamp(64px,18vw,190px);
+  line-height:1;letter-spacing:-2px;font-variant-numeric:tabular-nums;
+}
+#board.mode-lower .countdown{font-family:var(--font-playful);font-weight:800;letter-spacing:0;}
+#board .sub{margin-top:18px;font-size:clamp(14px,2vw,20px);color:#CFE7E3;max-width:60ch;}
+#board.mode-lower .sub{font-family:var(--font-playful);font-weight:600;font-size:clamp(16px,2.4vw,24px);}
+#board .clock-of-day{position:absolute;bottom:20px;left:20px;font-size:13px;color:rgba(255,255,255,.55);font-variant-numeric:tabular-nums;}
+#board .now-playing{
+  margin-top:26px;display:inline-flex;align-items:center;gap:10px;
+  background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.2);
+  padding:9px 16px;border-radius:999px;font-size:13px;font-weight:600;
+}
+#board .bar{display:flex;gap:3px;align-items:flex-end;height:14px;}
+#board .bar span{width:3px;background:var(--live-wire);border-radius:2px;animation:eq 900ms ease-in-out infinite;}
+#board .bar span:nth-child(1){height:40%;animation-delay:0ms;}
+#board .bar span:nth-child(2){height:100%;animation-delay:150ms;}
+#board .bar span:nth-child(3){height:65%;animation-delay:300ms;}
+#board .bar span:nth-child(4){height:85%;animation-delay:450ms;}
+@keyframes eq{0%,100%{transform:scaleY(.4);}50%{transform:scaleY(1);}}
+
+#board.mode-lower .bounce-icon{
+  font-size:clamp(40px,7vw,72px);margin-bottom:6px;
+  animation:bounce 1.6s ease-in-out infinite;
+}
+@keyframes bounce{0%,100%{transform:translateY(0);}50%{transform:translateY(-14px);}}
+
+/* toast */
+#toast{
+  position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(20px);
+  background:var(--deep-circuit);color:#fff;padding:12px 20px;border-radius:12px;
+  font-size:13.5px;font-weight:600;opacity:0;pointer-events:none;transition:all .25s ease;z-index:300;
+  box-shadow:0 10px 26px rgba(0,0,0,.25);
+}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+
+.empty-state{text-align:center;padding:40px 20px;color:var(--ink-soft);}
+.empty-state .em-icon{font-size:34px;margin-bottom:10px;}
+
+footer.foot{text-align:center;color:var(--ink-soft);font-size:12px;padding:30px 0 10px;}
+
+/* License gate */
+#licenseGate{
+  position:fixed;inset:0;z-index:500;
+  background:rgba(11,42,48,.72);backdrop-filter:blur(3px);
+  display:flex;align-items:center;justify-content:center;padding:20px;
+}
+.license-card{
+  background:var(--card);border-radius:var(--radius-l);padding:32px clamp(22px,4vw,40px);
+  max-width:420px;width:100%;box-shadow:0 30px 60px rgba(0,0,0,.35);
+  border:1px solid var(--line);
+}
+.license-card .brand-mark{margin-bottom:14px;}
+.license-card h2{font-family:var(--font-display);margin:0 0 8px;font-size:21px;font-weight:600;}
+.license-card p{color:var(--ink-soft);font-size:13.5px;line-height:1.55;margin:0 0 20px;}
+.license-card input[type=text]{
+  width:100%;padding:12px 14px;border:1px solid var(--line);border-radius:10px;
+  background:var(--bg);color:var(--ink);font-size:15px;letter-spacing:.5px;margin-bottom:10px;
+  font-family:var(--font-display);text-transform:uppercase;
+}
+.license-card button{
+  width:100%;background:var(--core-teal);color:#fff;border:none;border-radius:10px;
+  padding:13px 0;font-weight:700;font-size:14.5px;cursor:pointer;
+}
+.license-card button:hover{background:#037469;}
+.license-card button:disabled{opacity:.6;cursor:default;}
+.license-status{font-size:13px;margin-top:12px;min-height:18px;}
+.license-status.error{color:#B3452A;}
+.license-status.ok{color:var(--core-teal);}
+.license-footnote{font-size:11.5px;color:var(--ink-soft);margin-top:16px;text-align:center;}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <div class="topbar">
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true"></div>
+      <div>
+        <div class="brand-name">Rewired Sound Clock</div>
+        <div class="brand-sub">Classroom transitions, on autopilot</div>
+      </div>
+    </div>
+    <div class="profile-picker">
+      <select class="profile-select" id="profileSelect" aria-label="Select teacher profile"></select>
+      <button class="icon-btn" id="newProfileBtn" title="Add a teacher profile">+ Teacher</button>
+    </div>
+  </div>
+
+  <div class="layout">
+    <nav class="nav" id="mainNav">
+      <a data-view="schedule" class="active">Schedule</a>
+      <a data-view="sounds">Sound library</a>
+      <a data-view="streaming">Streaming accounts</a>
+      <a data-view="board">Open board</a>
+    </nav>
+
+    <main class="panel">
+
+      <!-- SCHEDULE VIEW -->
+      <section id="view-schedule">
+        <div class="eyebrow">Teacher schedule</div>
+        <h1 class="page-title">Set up the class day</h1>
+        <p class="page-desc">Add each period, pick when it starts and ends, and choose how long the entry, warm-up and clean-up sounds should run. The clock does the rest — no one has to press play between periods.</p>
+
+        <div class="start-day-card">
+          <div>
+            <h2>Ready for the board?</h2>
+            <p>Tap start once at the beginning of the day to unlock sound in this browser tab. After that, the clock runs itself — open the board and it will follow the schedule below.</p>
+          </div>
+          <button class="start-day-btn" id="startDayBtn">▶ Start my day</button>
+        </div>
+
+        <div class="card">
+          <div class="field" style="max-width:340px;">
+            <label for="teacherName">Teacher / room name</label>
+            <input type="text" id="teacherName" placeholder="Ms. Alvarez — Room 214">
+          </div>
+          <div class="field">
+            <label>Board style for this room</label>
+            <div class="toggle-pair" id="schoolModeToggle">
+              <button data-mode="lower" type="button">Lower school (K–7)</button>
+              <button data-mode="upper" type="button">Upper school (8–12)</button>
+            </div>
+            <div class="hint">Changes how the display board looks when it's on the projector — playful and bouncy for younger grades, minimal and mature for older ones. Timing works exactly the same either way.</div>
+          </div>
+        </div>
+
+        <div class="card" id="dayTypesCard">
+          <div class="field" style="margin-bottom:10px;">
+            <label>Which days look like this?</label>
+            <div class="hint" style="margin-top:0;margin-bottom:10px;">Most schools run the same schedule every day — but if Wednesdays have specials, an assembly day, or any other different lineup, add a separate schedule for just those days. Each weekday belongs to exactly one schedule.</div>
+          </div>
+          <div id="dayTypeTabs" class="daytype-tabs"></div>
+          <div id="dayTypeEditor"></div>
+        </div>
+
+        <div id="periodsList" style="margin-top:18px;"></div>
+        <button class="add-period-btn" id="addPeriodBtn">+ Add a class period</button>
+      </section>
+
+      <!-- SOUNDS VIEW -->
+      <section id="view-sounds" class="hidden">
+        <div class="eyebrow">Sound library</div>
+        <h1 class="page-title">Royalty-free sounds, generated in the browser</h1>
+        <p class="page-desc">These tracks are synthesized on the spot — nothing downloaded, nothing to license — so they're safe to loop all day. Preview them here, then assign them to a period's entry, warm-up or clean-up slot. You can also upload your own royalty-free file for any slot.</p>
+
+        <div class="card">
+          <h3 style="margin:0 0 4px;font-family:var(--font-display);font-size:16px;">Built-in tracks</h3>
+          <p style="color:var(--ink-soft);font-size:13px;margin:0 0 16px;">Grouped by vibe — Entry usually wants Upbeat, Warm-up wants Instrumental or White noise, Clean-up wants a Chime.</p>
+          <div class="sound-grid" id="builtinSoundGrid"></div>
+        </div>
+
+        <div class="card">
+          <h3 style="margin:0 0 4px;font-family:var(--font-display);font-size:16px;">Your uploads</h3>
+          <p style="color:var(--ink-soft);font-size:13px;margin:0 0 16px;">Upload a royalty-free MP3 or WAV you have the rights to use. Files stay in this browser only — they're not sent anywhere.</p>
+          <div class="upload-card">
+            <div class="row2">
+              <div class="field" style="margin-bottom:10px;">
+                <label for="uploadName">Track name</label>
+                <input type="text" id="uploadName" placeholder="e.g. Friday Focus Playlist">
+              </div>
+              <div class="field" style="margin-bottom:10px;">
+                <label for="uploadVibe">Vibe / category</label>
+                <select id="uploadVibe">
+                  <option value="upbeat">Upbeat (entry)</option>
+                  <option value="instrumental">Instrumental (warm-up)</option>
+                  <option value="whitenoise">White noise (warm-up)</option>
+                  <option value="cleanup">Clean-up chime (exit)</option>
+                </select>
+              </div>
+            </div>
+            <input type="file" id="uploadFile" accept="audio/*">
+            <div style="margin-top:10px;"><button class="icon-btn primary" id="uploadSaveBtn">Save upload</button></div>
+          </div>
+          <div class="sound-grid" id="uploadSoundGrid" style="margin-top:16px;"></div>
+        </div>
+      </section>
+
+      <!-- STREAMING VIEW -->
+      <section id="view-streaming" class="hidden">
+        <div class="eyebrow">Phase 2</div>
+        <h1 class="page-title">Streaming accounts</h1>
+        <p class="page-desc">For teachers who want a bigger song library than the built-in tracks, the clock can eventually hand off playback to a personal streaming account. Each service has its own requirements, noted below.</p>
+
+        <div class="card">
+          <div class="stream-row">
+            <div class="stream-left">
+              <div class="stream-badge" style="background:#1DB954;">Sp</div>
+              <div>
+                <div class="stream-name">Spotify</div>
+                <div class="stream-status">Requires Spotify Premium on the teacher's account</div>
+              </div>
+            </div>
+            <span class="pill-soon">Coming soon</span>
+          </div>
+          <div class="stream-row">
+            <div class="stream-left">
+              <div class="stream-badge" style="background:#FA2D48;">A</div>
+              <div>
+                <div class="stream-name">Apple Music</div>
+                <div class="stream-status">Requires an active Apple Music subscription</div>
+              </div>
+            </div>
+            <span class="pill-soon">Coming soon</span>
+          </div>
+          <div class="stream-row">
+            <div class="stream-left">
+              <div class="stream-badge" style="background:#FF0000;">Yt</div>
+              <div>
+                <div class="stream-name">YouTube</div>
+                <div class="stream-status">Works with any Google account, video-based playback</div>
+              </div>
+            </div>
+            <span class="pill-soon">Coming soon</span>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <footer class="foot">Rewired Sound Clock — built for Rewired Education Group classrooms</footer>
+</div>
+
+<!-- BOARD VIEW -->
+<div id="board" class="hidden mode-upper">
+  <button class="exit-board" id="exitBoardBtn">Exit board</button>
+  <div class="bounce-icon" id="boardIcon">🎵</div>
+  <div class="teacher-line" id="boardTeacherLine">Room 214</div>
+  <div class="phase-pill" id="boardPhasePill"><span class="dot entry"></span><span id="boardPhaseText">Between periods</span></div>
+  <div class="countdown" id="boardCountdown">--:--</div>
+  <div class="sub" id="boardSub">Waiting for the next scheduled period.</div>
+  <div class="now-playing hidden" id="boardNowPlaying">
+    <div class="bar"><span></span><span></span><span></span><span></span></div>
+    <span id="boardTrackName">—</span>
+  </div>
+  <div class="clock-of-day" id="boardClockOfDay">--:--</div>
+</div>
+
+<!-- LICENSE GATE -->
+<div id="licenseGate" class="hidden">
+  <div class="license-card">
+    <div class="brand-mark" aria-hidden="true"></div>
+    <h2>Enter your access key</h2>
+    <p>You'll find this in the email we sent right after checkout. It unlocks Sound Clock on this computer — no need to re-enter it once it's verified.</p>
+    <input type="text" id="licenseKeyInput" placeholder="RWSC-XXXX-XXXX" autocomplete="off" spellcheck="false">
+    <button id="licenseSubmitBtn">Unlock Sound Clock</button>
+    <div class="license-status" id="licenseStatus"></div>
+    <div class="license-footnote">Lost your key or it's not working? Email us and we'll resend it.</div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+(function(){
+"use strict";
+
+/* ============================================================
+   LICENSING (Phase 2 — off by default while you're building/testing)
+   Flip LICENSE_REQUIRED to true and paste your Apps Script web app URL
+   into VALIDATE_URL once your ThriveCart + Apps Script setup is live.
+   See SoundClockLicensing.gs for the backend that issues these keys.
+============================================================ */
+const LICENSE_CONFIG = {
+  LICENSE_REQUIRED: false,
+  VALIDATE_URL: "" // e.g. "https://script.google.com/macros/s/XXXXX/exec"
+};
+const LICENSE_LS_KEY = "rewiredSoundClock.license";
+
+function getStoredLicense(){
+  try{ return JSON.parse(localStorage.getItem(LICENSE_LS_KEY) || "null"); }catch(e){ return null; }
+}
+function storeLicense(rec){
+  try{ localStorage.setItem(LICENSE_LS_KEY, JSON.stringify(rec)); }catch(e){}
+}
+
+async function checkKeyWithServer(key){
+  const url = LICENSE_CONFIG.VALIDATE_URL + "?key=" + encodeURIComponent(key);
+  const res = await fetch(url);
+  const text = await res.text(); // server returns text/plain JSON on purpose, see .gs file
+  return JSON.parse(text);
+}
+
+function showLicenseGate(){
+  document.getElementById("licenseGate").classList.remove("hidden");
+}
+function hideLicenseGate(){
+  document.getElementById("licenseGate").classList.add("hidden");
+}
+
+async function initLicenseGate(){
+  if(!LICENSE_CONFIG.LICENSE_REQUIRED) return true;
+
+  // Support a one-click unlock link: soundclock.html?key=RWSC-XXXX-XXXX
+  const params = new URLSearchParams(window.location.search);
+  const urlKey = params.get("key");
+
+  const stored = getStoredLicense();
+  if(stored && stored.valid && stored.key){
+    hideLicenseGate();
+    // Silent background re-check so a later revoke eventually takes effect.
+    // Never blocks usage on a failed/offline check.
+    checkKeyWithServer(stored.key).then(result=>{
+      if(result && result.valid===false) storeLicense({key:stored.key, valid:false});
+    }).catch(()=>{});
+    return true;
+  }
+
+  showLicenseGate();
+  if(urlKey){
+    document.getElementById("licenseKeyInput").value = urlKey;
+    attemptUnlock(urlKey);
+  }
+  return false;
+}
+
+async function attemptUnlock(key){
+  const statusEl = document.getElementById("licenseStatus");
+  const btn = document.getElementById("licenseSubmitBtn");
+  key = (key||"").trim().toUpperCase();
+  if(!key){ statusEl.textContent="Enter your key first."; statusEl.className="license-status error"; return; }
+  btn.disabled = true;
+  statusEl.textContent = "Checking…"; statusEl.className = "license-status";
+  try{
+    const result = await checkKeyWithServer(key);
+    if(result && result.valid){
+      storeLicense({key, valid:true, name:result.name||"", email:result.email||""});
+      statusEl.textContent = "Unlocked!"; statusEl.className = "license-status ok";
+      setTimeout(()=>{ hideLicenseGate(); renderAll(); }, 400);
+    } else {
+      statusEl.textContent = "That key isn't valid. Double-check it or email us.";
+      statusEl.className = "license-status error";
+    }
+  }catch(e){
+    statusEl.textContent = "Couldn't reach the license server — check your connection and try again.";
+    statusEl.className = "license-status error";
+  }
+  btn.disabled = false;
+}
+
+document.getElementById("licenseSubmitBtn").addEventListener("click", ()=>{
+  attemptUnlock(document.getElementById("licenseKeyInput").value);
+});
+document.getElementById("licenseKeyInput").addEventListener("keydown",(e)=>{
+  if(e.key==="Enter") attemptUnlock(e.target.value);
+});
+
+/* ============================================================
+   STORAGE
+============================================================ */
+const LS_KEY = "rewiredSoundClock.v1";
+const DB_NAME = "rewiredSoundClockDB";
+const DB_STORE = "uploads";
+
+function loadState(){
+  try{
+    const raw = localStorage.getItem(LS_KEY);
+    if(raw) return JSON.parse(raw);
+  }catch(e){}
+  return null;
+}
+function saveState(){
+  try{ localStorage.setItem(LS_KEY, JSON.stringify(state)); }catch(e){}
+}
+
+function openDB(){
+  return new Promise((resolve,reject)=>{
+    const req = indexedDB.open(DB_NAME, 1);
+    req.onupgradeneeded = ()=>{ req.result.createObjectStore(DB_STORE, {keyPath:"id"}); };
+    req.onsuccess = ()=>resolve(req.result);
+    req.onerror = ()=>reject(req.error);
+  });
+}
+async function dbPut(id, blob, meta){
+  const db = await openDB();
+  return new Promise((res,rej)=>{
+    const tx = db.transaction(DB_STORE,"readwrite");
+    tx.objectStore(DB_STORE).put({id, blob, meta});
+    tx.oncomplete = ()=>res();
+    tx.onerror = ()=>rej(tx.error);
+  });
+}
+async function dbGet(id){
+  const db = await openDB();
+  return new Promise((res,rej)=>{
+    const tx = db.transaction(DB_STORE,"readonly");
+    const r = tx.objectStore(DB_STORE).get(id);
+    r.onsuccess = ()=>res(r.result);
+    r.onerror = ()=>rej(r.error);
+  });
+}
+async function dbDelete(id){
+  const db = await openDB();
+  return new Promise((res,rej)=>{
+    const tx = db.transaction(DB_STORE,"readwrite");
+    tx.objectStore(DB_STORE).delete(id);
+    tx.oncomplete = ()=>res();
+    tx.onerror = ()=>rej(tx.error);
+  });
+}
+
+/* ============================================================
+   STATE
+============================================================ */
+function uid(prefix){ return prefix + "_" + Math.random().toString(36).slice(2,9); }
+
+const WEEKDAY_LETTERS = ["Su","M","Tu","W","Th","F","Sa"];
+const SCHOOL_WEEKDAYS = [1,2,3,4,5]; // Mon–Fri
+
+function defaultProfile(name){
+  const dt = defaultDayType("Every day", SCHOOL_WEEKDAYS.slice());
+  return {
+    id: uid("t"),
+    name: name || "New teacher",
+    schoolMode: "lower",
+    dayTypes: [ dt ],
+    uiActiveDayTypeId: dt.id
+  };
+}
+function defaultDayType(name, weekdays){
+  return {
+    id: uid("d"),
+    name: name || "New schedule",
+    weekdays: weekdays || [],
+    periods: [ defaultPeriod("Period 1") ]
+  };
+}
+function defaultPeriod(label){
+  return {
+    id: uid("p"),
+    label: label || "New period",
+    startTime: "08:00",
+    endTime: "08:50",
+    entryMinutes: 2,
+    gapSeconds: 30,
+    warmupMinutes: 5,
+    cleanupMinutes: 3,
+    entrySound: {mode:"random", vibe:"upbeat", fixedId:null},
+    warmupSound: {mode:"random", vibe:"instrumental", fixedId:null},
+    exitSound: {mode:"random", vibe:"cleanup", fixedId:null}
+  };
+}
+
+let state = loadState();
+if(!state){
+  state = { currentProfileId:null, profiles:[ defaultProfile("Ms. Alvarez") ] };
+  state.currentProfileId = state.profiles[0].id;
+}
+// migrate: ensure at least one profile
+if(!state.profiles || !state.profiles.length){
+  const p = defaultProfile("New teacher");
+  state.profiles = [p];
+  state.currentProfileId = p.id;
+}
+// migrate: old single-schedule profiles (profile.periods) -> dayTypes model
+state.profiles.forEach(p=>{
+  if(!p.dayTypes || !p.dayTypes.length){
+    const migratedPeriods = (p.periods && p.periods.length) ? p.periods : [defaultPeriod("Period 1")];
+    const dt = { id: uid("d"), name:"Every day", weekdays: SCHOOL_WEEKDAYS.slice(), periods: migratedPeriods };
+    p.dayTypes = [dt];
+    delete p.periods;
+  }
+  if(!p.uiActiveDayTypeId || !p.dayTypes.find(d=>d.id===p.uiActiveDayTypeId)){
+    p.uiActiveDayTypeId = p.dayTypes[0].id;
+  }
+});
+
+let uploads = []; // {id, name, vibe} metadata cache (blobs live in IndexedDB)
+try{
+  const cached = localStorage.getItem(LS_KEY+".uploadsMeta");
+  if(cached) uploads = JSON.parse(cached);
+}catch(e){}
+function saveUploadsMeta(){
+  try{ localStorage.setItem(LS_KEY+".uploadsMeta", JSON.stringify(uploads)); }catch(e){}
+}
+
+function currentProfile(){
+  return state.profiles.find(p=>p.id===state.currentProfileId) || state.profiles[0];
+}
+
+// The day type currently open for editing in the Schedule tab.
+function activeEditingDayType(profile){
+  return profile.dayTypes.find(d=>d.id===profile.uiActiveDayTypeId) || profile.dayTypes[0];
+}
+
+// The day type that governs TODAY, for the scheduler/board. Returns null
+// if no day type claims today's weekday (e.g. a weekend with nothing set).
+function dayTypeForWeekday(profile, weekdayNum){
+  return profile.dayTypes.find(d=>d.weekdays.includes(weekdayNum)) || null;
+}
+
+/* ============================================================
+   BUILT-IN SOUND LIBRARY (procedurally generated, royalty free)
+============================================================ */
+const BUILTIN_SOUNDS = [
+  {id:"bi_bells", name:"Bright Bells", vibe:"upbeat", gen:"arpUp"},
+  {id:"bi_pulse", name:"Pep Pulse", vibe:"upbeat", gen:"arpPulse"},
+  {id:"bi_piano", name:"Soft Piano Pad", vibe:"instrumental", gen:"padWarm"},
+  {id:"bi_strings", name:"Warm Strings Pad", vibe:"instrumental", gen:"padStrings"},
+  {id:"bi_static", name:"Gentle Static", vibe:"whitenoise", gen:"noiseSoft"},
+  {id:"bi_ocean", name:"Ocean Drift", vibe:"whitenoise", gen:"noiseOcean"},
+  {id:"bi_winddown", name:"Wind-Down Chime", vibe:"cleanup", gen:"chimeDown"},
+  {id:"bi_tidyup", name:"Tidy-Up Bells", vibe:"cleanup", gen:"chimeUp"}
+];
+function builtinById(id){ return BUILTIN_SOUNDS.find(s=>s.id===id); }
+
+/* ============================================================
+   AUDIO ENGINE
+============================================================ */
+const AudioEngine = (function(){
+  let ctx = null;
+  let masterGain = null;
+  let active = null; // {stop()}
+  let unlocked = false;
+
+  function getCtx(){
+    if(!ctx){
+      ctx = new (window.AudioContext || window.webkitAudioContext)();
+      masterGain = ctx.createGain();
+      masterGain.gain.value = 0.9;
+      masterGain.connect(ctx.destination);
+    }
+    return ctx;
+  }
+
+  async function unlock(){
+    getCtx();
+    if(ctx.state === "suspended") await ctx.resume();
+    // blip a silent buffer to fully unlock on iOS-style browsers
+    const buf = ctx.createBuffer(1,1,22050);
+    const src = ctx.createBufferSource();
+    src.buffer = buf; src.connect(ctx.destination); src.start(0);
+    unlocked = true;
+    return true;
+  }
+
+  function isUnlocked(){ return unlocked; }
+
+  function makeNoiseBuffer(seconds){
+    const c = getCtx();
+    const buf = c.createBuffer(1, c.sampleRate*seconds, c.sampleRate);
+    const data = buf.getChannelData(0);
+    for(let i=0;i<data.length;i++) data[i] = Math.random()*2-1;
+    return buf;
+  }
+
+  function stopActive(fadeMs){
+    if(!active) return;
+    const prev = active;
+    active = null;
+    prev.stop(fadeMs || 250);
+  }
+
+  // Generative chime/arpeggio loop (entry / cleanup vibes)
+  function playArp(pattern, opts){
+    const c = getCtx();
+    const g = c.createGain();
+    g.gain.value = 0;
+    g.connect(masterGain);
+    g.gain.linearRampToValueAtTime(opts.vol||0.5, c.currentTime + 0.4);
+    let stopped = false;
+    let timer = null;
+
+    function scheduleLoop(){
+      if(stopped) return;
+      const now = c.currentTime;
+      let t = now + 0.05;
+      pattern.notes.forEach((freq, idx)=>{
+        const osc = c.createOscillator();
+        osc.type = opts.wave || "sine";
+        osc.frequency.value = freq;
+        const ng = c.createGain();
+        ng.gain.value = 0;
+        osc.connect(ng); ng.connect(g);
+        const noteStart = t + idx*pattern.step;
+        ng.gain.setValueAtTime(0, noteStart);
+        ng.gain.linearRampToValueAtTime(1, noteStart+0.02);
+        ng.gain.exponentialRampToValueAtTime(0.001, noteStart+pattern.step*0.9);
+        osc.start(noteStart);
+        osc.stop(noteStart+pattern.step);
+      });
+      const loopLen = pattern.notes.length*pattern.step + (pattern.pause||0.6);
+      timer = setTimeout(scheduleLoop, loopLen*1000);
+    }
+    scheduleLoop();
+
+    return {
+      stop(fadeMs){
+        stopped = true;
+        if(timer) clearTimeout(timer);
+        const c2 = getCtx();
+        g.gain.cancelScheduledValues(c2.currentTime);
+        g.gain.setValueAtTime(g.gain.value, c2.currentTime);
+        g.gain.linearRampToValueAtTime(0, c2.currentTime + fadeMs/1000);
+        setTimeout(()=>{ try{g.disconnect();}catch(e){} }, fadeMs+80);
+      }
+    };
+  }
+
+  // Generative pad drone (instrumental vibe)
+  function playPad(freqs, opts){
+    const c = getCtx();
+    const g = c.createGain();
+    g.gain.value = 0;
+    g.connect(masterGain);
+    g.gain.linearRampToValueAtTime(opts.vol||0.35, c.currentTime + 1.2);
+    const oscs = [];
+    const filter = c.createBiquadFilter();
+    filter.type = "lowpass";
+    filter.frequency.value = 1200;
+    filter.connect(g);
+    freqs.forEach((f,i)=>{
+      const o = c.createOscillator();
+      o.type = i%2===0 ? "sine" : "triangle";
+      o.frequency.value = f;
+      const og = c.createGain();
+      og.gain.value = 0.5/freqs.length;
+      o.connect(og); og.connect(filter);
+      o.start();
+      oscs.push(o);
+    });
+    // slow LFO on filter for movement
+    const lfo = c.createOscillator();
+    lfo.frequency.value = 0.07;
+    const lfoGain = c.createGain();
+    lfoGain.gain.value = 300;
+    lfo.connect(lfoGain); lfoGain.connect(filter.frequency);
+    lfo.start();
+
+    return {
+      stop(fadeMs){
+        const c2 = getCtx();
+        g.gain.cancelScheduledValues(c2.currentTime);
+        g.gain.setValueAtTime(g.gain.value, c2.currentTime);
+        g.gain.linearRampToValueAtTime(0, c2.currentTime + fadeMs/1000);
+        setTimeout(()=>{
+          oscs.forEach(o=>{try{o.stop();}catch(e){}});
+          try{lfo.stop();}catch(e){}
+          try{g.disconnect();}catch(e){}
+        }, fadeMs+120);
+      }
+    };
+  }
+
+  // Generative filtered noise loop (whitenoise vibe)
+  function playNoise(opts){
+    const c = getCtx();
+    const buf = makeNoiseBuffer(4);
+    const src = c.createBufferSource();
+    src.buffer = buf; src.loop = true;
+    const filter = c.createBiquadFilter();
+    filter.type = opts.filterType || "lowpass";
+    filter.frequency.value = opts.cutoff || 1800;
+    const g = c.createGain();
+    g.gain.value = 0;
+    src.connect(filter); filter.connect(g); g.connect(masterGain);
+    g.gain.linearRampToValueAtTime(opts.vol||0.25, c.currentTime + 1);
+    src.start();
+    return {
+      stop(fadeMs){
+        const c2 = getCtx();
+        g.gain.cancelScheduledValues(c2.currentTime);
+        g.gain.setValueAtTime(g.gain.value, c2.currentTime);
+        g.gain.linearRampToValueAtTime(0, c2.currentTime + fadeMs/1000);
+        setTimeout(()=>{ try{src.stop();}catch(e){} try{g.disconnect();}catch(e){} }, fadeMs+100);
+      }
+    };
+  }
+
+  // Uploaded file playback
+  async function playBlob(blob, opts){
+    const c = getCtx();
+    const arrayBuf = await blob.arrayBuffer();
+    const audioBuf = await c.decodeAudioData(arrayBuf.slice(0));
+    const src = c.createBufferSource();
+    src.buffer = audioBuf; src.loop = !!opts.loop;
+    const g = c.createGain();
+    g.gain.value = 0;
+    src.connect(g); g.connect(masterGain);
+    g.gain.linearRampToValueAtTime(opts.vol||0.7, c.currentTime + 0.4);
+    src.start();
+    return {
+      stop(fadeMs){
+        const c2 = getCtx();
+        g.gain.cancelScheduledValues(c2.currentTime);
+        g.gain.setValueAtTime(g.gain.value, c2.currentTime);
+        g.gain.linearRampToValueAtTime(0, c2.currentTime + fadeMs/1000);
+        setTimeout(()=>{ try{src.stop();}catch(e){} try{g.disconnect();}catch(e){} }, fadeMs+100);
+      }
+    };
+  }
+
+  const GENS = {
+    arpUp: ()=>playArp({notes:[392,523,659,784], step:0.16, pause:0.5}, {wave:"triangle", vol:0.45}),
+    arpPulse: ()=>playArp({notes:[440,440,554,659], step:0.13, pause:0.3}, {wave:"square", vol:0.3}),
+    padWarm: ()=>playPad([196,247,294,392], {vol:0.32}),
+    padStrings: ()=>playPad([220,277,330,440,554], {vol:0.28}),
+    noiseSoft: ()=>playNoise({cutoff:1400, vol:0.22}),
+    noiseOcean: ()=>playNoise({cutoff:600, vol:0.28}),
+    chimeDown: ()=>playArp({notes:[784,659,523,392], step:0.5, pause:1.2}, {wave:"sine", vol:0.4}),
+    chimeUp: ()=>playArp({notes:[523,659,784,1047], step:0.22, pause:0.8}, {wave:"sine", vol:0.42})
+  };
+
+  async function playBuiltin(id){
+    const s = builtinById(id);
+    if(!s) return;
+    stopActive(200);
+    active = GENS[s.gen]();
+    return s.name;
+  }
+
+  async function playUpload(id){
+    const rec = await dbGet(id);
+    if(!rec) return null;
+    stopActive(200);
+    active = await playBlob(rec.blob, {loop:true, vol:0.7});
+    return rec.meta.name;
+  }
+
+  function stop(){ stopActive(300); }
+
+  function previewToggle(id, isBuiltin, btn, onEnd){
+    // simple one-off preview management handled by caller
+  }
+
+  return { unlock, isUnlocked, playBuiltin, playUpload, stop, playBlob, getCtx };
+})();
+
+/* ============================================================
+   SCHEDULER
+============================================================ */
+const Scheduler = (function(){
+  let timer = null;
+  let dayStarted = false;
+  let lastPhaseKey = null; // to avoid re-triggering same phase
+  let currentTrackLabel = null;
+
+  function toSeconds(hms){
+    const [h,m] = hms.split(":").map(Number);
+    return h*3600+m*60;
+  }
+  function nowSeconds(){
+    const d = new Date();
+    return d.getHours()*3600 + d.getMinutes()*60 + d.getSeconds();
+  }
+  function fmtClock(totalSec){
+    const d = new Date();
+    let h = d.getHours(); const m = d.getMinutes();
+    const ampm = h>=12?"PM":"AM";
+    h = h%12; if(h===0) h=12;
+    return h+":"+String(m).padStart(2,"0")+" "+ampm;
+  }
+  function fmtCountdown(sec){
+    sec = Math.max(0, Math.round(sec));
+    const m = Math.floor(sec/60), s = sec%60;
+    return String(m).padStart(2,"0")+":"+String(s).padStart(2,"0");
+  }
+
+  function resolveSoundLabel(soundCfg){
+    if(soundCfg.mode==="fixed" && soundCfg.fixedId){
+      if(soundCfg.fixedId.startsWith("bi_")){
+        const s = builtinById(soundCfg.fixedId);
+        return s ? s.name : "Track";
+      } else {
+        const u = uploads.find(u=>u.id===soundCfg.fixedId);
+        return u ? u.name : "Uploaded track";
+      }
+    }
+    return null; // random resolved at play time
+  }
+
+  async function playSoundCfg(soundCfg){
+    let list;
+    if(soundCfg.mode==="fixed" && soundCfg.fixedId){
+      if(soundCfg.fixedId.startsWith("bi_")){
+        currentTrackLabel = await AudioEngine.playBuiltin(soundCfg.fixedId);
+        return;
+      } else {
+        currentTrackLabel = await AudioEngine.playUpload(soundCfg.fixedId);
+        return;
+      }
+    }
+    // random by vibe: builtin + matching uploads
+    const vibe = soundCfg.vibe;
+    const builtinPool = BUILTIN_SOUNDS.filter(s=>s.vibe===vibe);
+    const uploadPool = uploads.filter(u=>u.vibe===vibe);
+    const pool = [
+      ...builtinPool.map(s=>({type:"b", id:s.id})),
+      ...uploadPool.map(u=>({type:"u", id:u.id}))
+    ];
+    if(!pool.length) return;
+    const pick = pool[Math.floor(Math.random()*pool.length)];
+    if(pick.type==="b") currentTrackLabel = await AudioEngine.playBuiltin(pick.id);
+    else currentTrackLabel = await AudioEngine.playUpload(pick.id);
+  }
+
+  function computePhase(profile){
+    const t = nowSeconds();
+    const todayNum = new Date().getDay(); // 0=Sun..6=Sat
+    const dayType = dayTypeForWeekday(profile, todayNum);
+
+    if(!dayType){
+      return {key:"noschool", period:null, phase:"noschool", label:"No school scheduled today", remaining:0, sound:null, icon:"🌙"};
+    }
+
+    for(const p of dayType.periods){
+      const start = toSeconds(p.startTime);
+      const end = toSeconds(p.endTime);
+      if(end <= start) continue;
+      const entryEnd = start + p.entryMinutes*60;
+      const warmupStart = entryEnd + p.gapSeconds;
+      const warmupEnd = warmupStart + p.warmupMinutes*60;
+      const cleanupStart = end - p.cleanupMinutes*60;
+
+      if(t>=start && t<entryEnd){
+        return {key:p.id+"_entry", period:p, dayType, phase:"entry", label:"Entry — find your seat", remaining: entryEnd-t, sound:p.entrySound, icon:"🎒"};
+      }
+      if(t>=entryEnd && t<warmupStart){
+        return {key:p.id+"_gap1", period:p, dayType, phase:"gap", label:"Get settled", remaining: warmupStart-t, sound:null, icon:"⏳"};
+      }
+      if(t>=warmupStart && t<warmupEnd){
+        return {key:p.id+"_warmup", period:p, dayType, phase:"warmup", label:"Warm-up", remaining: warmupEnd-t, sound:p.warmupSound, icon:"✏️"};
+      }
+      if(t>=warmupEnd && t<Math.max(warmupEnd,cleanupStart)){
+        return {key:p.id+"_teach", period:p, dayType, phase:"teach", label:"Class in session", remaining: Math.max(warmupEnd,cleanupStart)-t, sound:null, icon:"📚"};
+      }
+      if(t>=Math.max(warmupEnd,cleanupStart) && t<end){
+        return {key:p.id+"_cleanup", period:p, dayType, phase:"cleanup", label:"Clean-up time", remaining: end-t, sound:p.exitSound, icon:"🧹"};
+      }
+    }
+    // find next period today, within this day type
+    let next = null;
+    for(const p of dayType.periods){
+      const start = toSeconds(p.startTime);
+      if(start > t && (!next || start < toSeconds(next.startTime))) next = p;
+    }
+    if(next){
+      return {key:"idle_"+next.id, period:next, dayType, phase:"idle", label:"Next up: "+next.label, remaining: toSeconds(next.startTime)-t, sound:null, icon:"🕒", nextStart:next.startTime};
+    }
+    return {key:"idle_none", period:null, dayType, phase:"idle", label:"No more periods scheduled today", remaining:0, sound:null, icon:"🌙"};
+  }
+
+  function tick(){
+    const profile = currentProfile();
+    if(!profile) return;
+    const ph = computePhase(profile);
+    updateBoardUI(profile, ph);
+
+    if(dayStarted && ph.key !== lastPhaseKey){
+      lastPhaseKey = ph.key;
+      if(ph.sound){
+        playSoundCfg(ph.sound);
+        currentTrackLabel = currentTrackLabel || "Playing…";
+      } else {
+        AudioEngine.stop();
+        currentTrackLabel = null;
+      }
+    }
+  }
+
+  function start(){
+    dayStarted = true;
+    lastPhaseKey = null;
+    if(timer) clearInterval(timer);
+    timer = setInterval(tick, 500);
+    tick();
+  }
+  function stopAll(){
+    if(timer) clearInterval(timer);
+    dayStarted = false;
+    AudioEngine.stop();
+  }
+
+  function getCurrentTrackLabel(){ return currentTrackLabel; }
+
+  return { start, stopAll, computePhase, fmtCountdown, fmtClock, getCurrentTrackLabel, tick };
+})();
+
+/* ============================================================
+   UI: TOAST
+============================================================ */
+let toastTimer = null;
+function toast(msg){
+  const el = document.getElementById("toast");
+  el.textContent = msg;
+  el.classList.add("show");
+  if(toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>el.classList.remove("show"), 2200);
+}
+
+/* ============================================================
+   UI: NAV
+============================================================ */
+const views = ["schedule","sounds","streaming"];
+document.getElementById("mainNav").addEventListener("click",(e)=>{
+  const a = e.target.closest("a");
+  if(!a) return;
+  const v = a.dataset.view;
+  if(v==="board"){ openBoard(); return; }
+  document.querySelectorAll("#mainNav a").forEach(x=>x.classList.remove("active"));
+  a.classList.add("active");
+  views.forEach(id=>{
+    document.getElementById("view-"+id).classList.toggle("hidden", id!==v);
+  });
+});
+
+/* ============================================================
+   UI: PROFILE PICKER
+============================================================ */
+function renderProfileSelect(){
+  const sel = document.getElementById("profileSelect");
+  sel.innerHTML = "";
+  state.profiles.forEach(p=>{
+    const opt = document.createElement("option");
+    opt.value = p.id; opt.textContent = p.name || "Untitled teacher";
+    if(p.id===state.currentProfileId) opt.selected = true;
+    sel.appendChild(opt);
+  });
+}
+document.getElementById("profileSelect").addEventListener("change",(e)=>{
+  state.currentProfileId = e.target.value;
+  saveState();
+  renderAll();
+});
+document.getElementById("newProfileBtn").addEventListener("click",()=>{
+  const p = defaultProfile("New teacher");
+  state.profiles.push(p);
+  state.currentProfileId = p.id;
+  saveState();
+  renderAll();
+  toast("New teacher profile added");
+});
+
+/* ============================================================
+   UI: SCHEDULE VIEW
+============================================================ */
+function renderScheduleView(){
+  const profile = currentProfile();
+  document.getElementById("teacherName").value = profile.name;
+  document.querySelectorAll("#schoolModeToggle button").forEach(btn=>{
+    btn.classList.toggle("active", btn.dataset.mode===profile.schoolMode);
+  });
+
+  renderDayTypeTabs(profile);
+  renderDayTypeEditor(profile);
+
+  const dayType = activeEditingDayType(profile);
+  const list = document.getElementById("periodsList");
+  list.innerHTML = "";
+  if(!dayType.periods.length){
+    const empty = document.createElement("div");
+    empty.className = "empty-state";
+    empty.innerHTML = '<div class="em-icon">🗓️</div>No periods yet — add the first one below.';
+    list.appendChild(empty);
+  }
+  dayType.periods.forEach(period=>{
+    list.appendChild(renderPeriodCard(dayType, period));
+  });
+}
+
+function renderDayTypeTabs(profile){
+  const wrap = document.getElementById("dayTypeTabs");
+  wrap.innerHTML = "";
+  profile.dayTypes.forEach(dt=>{
+    const tab = document.createElement("div");
+    tab.className = "daytype-tab" + (dt.id===profile.uiActiveDayTypeId ? " active" : "");
+    const dayLabel = dt.weekdays.length
+      ? dt.weekdays.slice().sort().map(n=>WEEKDAY_LETTERS[n]).join(" ")
+      : "No days assigned yet";
+    tab.innerHTML = `<span class="dt-name">${escapeAttr(dt.name)}</span><span class="dt-days">${dayLabel}</span>`;
+    tab.addEventListener("click",()=>{
+      profile.uiActiveDayTypeId = dt.id;
+      saveState();
+      renderScheduleView();
+    });
+    wrap.appendChild(tab);
+  });
+  const addBtn = document.createElement("button");
+  addBtn.className = "daytype-tab-add";
+  addBtn.type = "button";
+  addBtn.textContent = "+ Add a schedule";
+  addBtn.addEventListener("click",()=>{
+    const dt = defaultDayType("New schedule", []);
+    profile.dayTypes.push(dt);
+    profile.uiActiveDayTypeId = dt.id;
+    saveState();
+    renderScheduleView();
+    toast("New schedule added — pick which days use it below");
+  });
+  wrap.appendChild(addBtn);
+}
+
+function renderDayTypeEditor(profile){
+  const dayType = activeEditingDayType(profile);
+  const wrap = document.getElementById("dayTypeEditor");
+  wrap.innerHTML = "";
+
+  const nameRow = document.createElement("div");
+  nameRow.className = "daytype-name-row";
+  nameRow.innerHTML = `
+    <input type="text" id="dtNameInput" value="${escapeAttr(dayType.name)}" aria-label="Schedule name">
+    ${profile.dayTypes.length>1 ? '<button class="chip-btn" id="dtRemoveBtn">Remove this schedule</button>' : ''}
+  `;
+  wrap.appendChild(nameRow);
+  nameRow.querySelector("#dtNameInput").addEventListener("input",(e)=>{
+    dayType.name = e.target.value;
+    saveState();
+    renderDayTypeTabs(profile);
+  });
+  const removeBtn = nameRow.querySelector("#dtRemoveBtn");
+  if(removeBtn){
+    removeBtn.addEventListener("click",()=>{
+      profile.dayTypes = profile.dayTypes.filter(d=>d.id!==dayType.id);
+      profile.uiActiveDayTypeId = profile.dayTypes[0].id;
+      saveState();
+      renderScheduleView();
+      toast("Schedule removed — its days are unassigned until you pick them elsewhere");
+    });
+  }
+
+  const weekdayRow = document.createElement("div");
+  weekdayRow.className = "weekday-row";
+  WEEKDAY_LETTERS.forEach((letter, num)=>{
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "weekday-btn" + (dayType.weekdays.includes(num) ? " on" : "");
+    btn.textContent = letter;
+    btn.title = num===0?"Sunday":num===1?"Monday":num===2?"Tuesday":num===3?"Wednesday":num===4?"Thursday":num===5?"Friday":"Saturday";
+    btn.addEventListener("click",()=>{
+      if(dayType.weekdays.includes(num)){
+        dayType.weekdays = dayType.weekdays.filter(d=>d!==num);
+      } else {
+        // a weekday belongs to exactly one schedule — steal it from any other
+        profile.dayTypes.forEach(other=>{
+          if(other.id!==dayType.id) other.weekdays = other.weekdays.filter(d=>d!==num);
+        });
+        dayType.weekdays.push(num);
+      }
+      saveState();
+      renderScheduleView();
+    });
+    weekdayRow.appendChild(btn);
+  });
+  wrap.appendChild(weekdayRow);
+}
+
+function soundOptionsHTML(selected){
+  let html = '<optgroup label="Random by vibe">';
+  html += `<option value="random:upbeat">🎲 Random — Upbeat</option>`;
+  html += `<option value="random:instrumental">🎲 Random — Instrumental</option>`;
+  html += `<option value="random:whitenoise">🎲 Random — White noise</option>`;
+  html += `<option value="random:cleanup">🎲 Random — Clean-up chime</option>`;
+  html += `</optgroup><optgroup label="Built-in tracks">`;
+  BUILTIN_SOUNDS.forEach(s=>{
+    html += `<option value="fixed:${s.id}">${s.name}</option>`;
+  });
+  html += `</optgroup>`;
+  if(uploads.length){
+    html += `<optgroup label="Your uploads">`;
+    uploads.forEach(u=>{
+      html += `<option value="fixed:${u.id}">${u.name}</option>`;
+    });
+    html += `</optgroup>`;
+  }
+  return html;
+}
+function soundCfgToValue(cfg){
+  return cfg.mode==="fixed" ? "fixed:"+cfg.fixedId : "random:"+cfg.vibe;
+}
+function valueToSoundCfg(val){
+  const [mode, rest] = val.split(":");
+  if(mode==="fixed") return {mode:"fixed", fixedId:rest, vibe:null};
+  return {mode:"random", vibe:rest, fixedId:null};
+}
+
+function renderPeriodCard(dayType, period){
+  const wrap = document.createElement("div");
+  wrap.className = "period-card";
+  wrap.innerHTML = `
+    <div class="period-head">
+      <input type="text" class="period-label" value="${escapeAttr(period.label)}" aria-label="Period name">
+      <button class="chip-btn remove-period">Remove</button>
+    </div>
+    <div class="row3">
+      <div class="field">
+        <label>Start time</label>
+        <input type="time" class="p-start" value="${period.startTime}">
+      </div>
+      <div class="field">
+        <label>End time</label>
+        <input type="time" class="p-end" value="${period.endTime}">
+      </div>
+      <div class="field">
+        <label>Gap between entry &amp; warm-up</label>
+        <div class="dur-row"><input type="number" min="0" max="600" class="p-gap" value="${period.gapSeconds}"> sec of quiet</div>
+      </div>
+    </div>
+    <div class="phase-grid">
+      <div class="phase-box">
+        <div class="phase-label"><span class="dot entry"></span>Entry</div>
+        <select class="p-entry-sound">${soundOptionsHTML()}</select>
+        <div class="dur-row">Plays for <input type="number" min="0" max="60" class="p-entry-min" value="${period.entryMinutes}"> min</div>
+      </div>
+      <div class="phase-box">
+        <div class="phase-label"><span class="dot warmup"></span>Warm-up</div>
+        <select class="p-warmup-sound">${soundOptionsHTML()}</select>
+        <div class="dur-row">Plays for <input type="number" min="0" max="60" class="p-warmup-min" value="${period.warmupMinutes}"> min</div>
+      </div>
+      <div class="phase-box">
+        <div class="phase-label"><span class="dot exit"></span>Clean-up</div>
+        <select class="p-exit-sound">${soundOptionsHTML()}</select>
+        <div class="dur-row">Starts <input type="number" min="0" max="30" class="p-exit-min" value="${period.cleanupMinutes}"> min before bell</div>
+      </div>
+    </div>
+  `;
+  wrap.querySelector(".p-entry-sound").value = soundCfgToValue(period.entrySound);
+  wrap.querySelector(".p-warmup-sound").value = soundCfgToValue(period.warmupSound);
+  wrap.querySelector(".p-exit-sound").value = soundCfgToValue(period.exitSound);
+
+  function bump(){ saveState(); }
+
+  wrap.querySelector(".period-label").addEventListener("input",(e)=>{ period.label=e.target.value; bump(); });
+  wrap.querySelector(".p-start").addEventListener("change",(e)=>{ period.startTime=e.target.value; bump(); });
+  wrap.querySelector(".p-end").addEventListener("change",(e)=>{ period.endTime=e.target.value; bump(); });
+  wrap.querySelector(".p-gap").addEventListener("change",(e)=>{ period.gapSeconds=Number(e.target.value)||0; bump(); });
+  wrap.querySelector(".p-entry-min").addEventListener("change",(e)=>{ period.entryMinutes=Number(e.target.value)||0; bump(); });
+  wrap.querySelector(".p-warmup-min").addEventListener("change",(e)=>{ period.warmupMinutes=Number(e.target.value)||0; bump(); });
+  wrap.querySelector(".p-exit-min").addEventListener("change",(e)=>{ period.cleanupMinutes=Number(e.target.value)||0; bump(); });
+  wrap.querySelector(".p-entry-sound").addEventListener("change",(e)=>{ period.entrySound=valueToSoundCfg(e.target.value); bump(); });
+  wrap.querySelector(".p-warmup-sound").addEventListener("change",(e)=>{ period.warmupSound=valueToSoundCfg(e.target.value); bump(); });
+  wrap.querySelector(".p-exit-sound").addEventListener("change",(e)=>{ period.exitSound=valueToSoundCfg(e.target.value); bump(); });
+  wrap.querySelector(".remove-period").addEventListener("click",()=>{
+    dayType.periods = dayType.periods.filter(p=>p.id!==period.id);
+    saveState();
+    renderScheduleView();
+    toast("Period removed");
+  });
+
+  return wrap;
+}
+
+document.getElementById("teacherName").addEventListener("input",(e)=>{
+  currentProfile().name = e.target.value;
+  saveState();
+  renderProfileSelect();
+});
+document.getElementById("schoolModeToggle").addEventListener("click",(e)=>{
+  const btn = e.target.closest("button");
+  if(!btn) return;
+  currentProfile().schoolMode = btn.dataset.mode;
+  saveState();
+  renderScheduleView();
+});
+document.getElementById("addPeriodBtn").addEventListener("click",()=>{
+  const profile = currentProfile();
+  const dayType = activeEditingDayType(profile);
+  const n = dayType.periods.length+1;
+  dayType.periods.push(defaultPeriod("Period "+n));
+  saveState();
+  renderScheduleView();
+});
+
+/* ============================================================
+   UI: SOUNDS VIEW
+============================================================ */
+function vibeLabel(v){
+  return {upbeat:"Upbeat", instrumental:"Instrumental", whitenoise:"White noise", cleanup:"Clean-up"}[v] || v;
+}
+function renderBuiltinGrid(){
+  const grid = document.getElementById("builtinSoundGrid");
+  grid.innerHTML = "";
+  BUILTIN_SOUNDS.forEach(s=>{
+    const card = document.createElement("div");
+    card.className = "sound-card";
+    card.innerHTML = `
+      <span class="vibe-pill vibe-${s.vibe}">${vibeLabel(s.vibe)}</span>
+      <div class="name">${s.name}</div>
+      <div class="play-row"><button class="preview-btn" data-id="${s.id}" data-kind="builtin">▶ Preview</button></div>
+    `;
+    grid.appendChild(card);
+  });
+}
+function renderUploadGrid(){
+  const grid = document.getElementById("uploadSoundGrid");
+  grid.innerHTML = "";
+  if(!uploads.length){
+    grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1;padding:20px;"><div class="em-icon">📁</div>No uploads yet.</div>';
+    return;
+  }
+  uploads.forEach(u=>{
+    const card = document.createElement("div");
+    card.className = "sound-card";
+    card.innerHTML = `
+      <span class="vibe-pill vibe-${u.vibe}">${vibeLabel(u.vibe)}</span>
+      <div class="name">${u.name}</div>
+      <div class="play-row">
+        <button class="preview-btn" data-id="${u.id}" data-kind="upload">▶ Preview</button>
+        <button class="delete-upload" data-id="${u.id}">Delete</button>
+      </div>
+    `;
+    grid.appendChild(card);
+  });
+}
+
+let previewActive = null;
+document.addEventListener("click", async (e)=>{
+  const pb = e.target.closest(".preview-btn");
+  if(pb){
+    await AudioEngine.unlock();
+    document.querySelectorAll(".preview-btn").forEach(b=>{ if(b!==pb){ b.classList.remove("playing"); b.textContent="▶ Preview"; } });
+    if(pb.classList.contains("playing")){
+      AudioEngine.stop();
+      pb.classList.remove("playing"); pb.textContent="▶ Preview";
+      previewActive = null;
+    } else {
+      pb.classList.add("playing"); pb.textContent="■ Stop";
+      if(pb.dataset.kind==="builtin") await AudioEngine.playBuiltin(pb.dataset.id);
+      else await AudioEngine.playUpload(pb.dataset.id);
+      previewActive = pb;
+    }
+    return;
+  }
+  const del = e.target.closest(".delete-upload");
+  if(del){
+    const id = del.dataset.id;
+    await dbDelete(id);
+    uploads = uploads.filter(u=>u.id!==id);
+    saveUploadsMeta();
+    renderUploadGrid();
+    renderScheduleView();
+    toast("Upload deleted");
+  }
+});
+
+document.getElementById("uploadSaveBtn").addEventListener("click", async ()=>{
+  const nameInput = document.getElementById("uploadName");
+  const vibeInput = document.getElementById("uploadVibe");
+  const fileInput = document.getElementById("uploadFile");
+  const file = fileInput.files[0];
+  if(!file){ toast("Choose an audio file first"); return; }
+  const name = nameInput.value.trim() || file.name;
+  const id = uid("up");
+  try{
+    await dbPut(id, file, {name, vibe: vibeInput.value});
+    uploads.push({id, name, vibe: vibeInput.value});
+    saveUploadsMeta();
+    nameInput.value = ""; fileInput.value = "";
+    renderUploadGrid();
+    renderScheduleView();
+    toast("Upload saved");
+  }catch(err){
+    toast("Couldn't save that file in this browser");
+  }
+});
+
+/* ============================================================
+   UI: START DAY
+============================================================ */
+document.getElementById("startDayBtn").addEventListener("click", async ()=>{
+  const btn = document.getElementById("startDayBtn");
+  await AudioEngine.unlock();
+  Scheduler.start();
+  btn.textContent = "✓ Day started";
+  btn.disabled = true;
+  toast("Sound unlocked — the clock is now running");
+});
+
+/* ============================================================
+   UI: BOARD
+============================================================ */
+function openBoard(){
+  const profile = currentProfile();
+  const board = document.getElementById("board");
+  board.classList.remove("hidden");
+  board.classList.toggle("mode-lower", profile.schoolMode==="lower");
+  board.classList.toggle("mode-upper", profile.schoolMode!=="lower");
+  document.getElementById("boardTeacherLine").textContent = profile.name || "Classroom";
+  if(!Scheduler.__running){
+    // ensure a UI refresh even if day not started yet
+  }
+  Scheduler.tick();
+}
+document.getElementById("exitBoardBtn").addEventListener("click",()=>{
+  document.getElementById("board").classList.add("hidden");
+});
+
+const PHASE_DOT_CLASS = {entry:"entry", gap:"warmup", warmup:"warmup", teach:"exit", cleanup:"exit", idle:"entry", noschool:"entry"};
+const PHASE_ICON = {entry:"🎒", gap:"⏳", warmup:"✏️", teach:"📚", cleanup:"🧹", idle:"🕒", noschool:"🌙"};
+
+function updateBoardUI(profile, ph){
+  const board = document.getElementById("board");
+  if(board.classList.contains("hidden")) return;
+
+  document.getElementById("boardPhaseText").textContent = ph.label;
+  document.querySelector("#boardPhasePill .dot").className = "dot " + (PHASE_DOT_CLASS[ph.phase]||"entry");
+  document.getElementById("boardIcon").textContent = PHASE_ICON[ph.phase] || "🎵";
+  document.getElementById("boardCountdown").textContent = ph.phase==="noschool" ? "--:--" : Scheduler.fmtCountdown(ph.remaining);
+  document.getElementById("boardClockOfDay").textContent = Scheduler.fmtClock();
+
+  let teacherLine = profile.name || "Classroom";
+  if(profile.dayTypes.length > 1 && ph.dayType){
+    teacherLine += " · " + ph.dayType.name;
+  }
+  document.getElementById("boardTeacherLine").textContent = teacherLine;
+
+  let sub = "";
+  if(ph.phase==="entry") sub = "Music's playing — find your seat and get ready.";
+  else if(ph.phase==="gap") sub = "Almost time to begin warm-up.";
+  else if(ph.phase==="warmup") sub = "Work on your warm-up until the music stops.";
+  else if(ph.phase==="teach") sub = ph.period ? ph.period.label : "";
+  else if(ph.phase==="cleanup") sub = "Wrap up and tidy your space before the bell.";
+  else if(ph.phase==="idle" && ph.period) sub = "Starts at " + formatTimeLabel(ph.period.startTime);
+  else if(ph.phase==="noschool") sub = "No periods are set for today's schedule.";
+  else sub = "Enjoy the break.";
+  document.getElementById("boardSub").textContent = sub;
+
+  const npEl = document.getElementById("boardNowPlaying");
+  const label = Scheduler.getCurrentTrackLabel();
+  if(label && (ph.phase==="entry"||ph.phase==="warmup"||ph.phase==="cleanup")){
+    npEl.classList.remove("hidden");
+    document.getElementById("boardTrackName").textContent = label;
+  } else {
+    npEl.classList.add("hidden");
+  }
+}
+function formatTimeLabel(hms){
+  const [h,m] = hms.split(":").map(Number);
+  const ampm = h>=12?"PM":"AM";
+  let hh = h%12; if(hh===0) hh=12;
+  return hh+":"+String(m).padStart(2,"0")+" "+ampm;
+}
+
+/* ============================================================
+   INIT / RENDER ALL
+============================================================ */
+function escapeAttr(s){
+  return String(s).replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;");
+}
+
+function renderAll(){
+  renderProfileSelect();
+  renderScheduleView();
+  renderBuiltinGrid();
+  renderUploadGrid();
+}
+
+initLicenseGate().then(unlocked=>{
+  if(unlocked) renderAll();
+});
+
+// background ticking so board stays accurate even when app view is active
+setInterval(()=>{ Scheduler.tick(); }, 1000);
+
+})();
+</script>
+</body>
+</html>
