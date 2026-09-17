@@ -319,6 +319,31 @@ p.page-desc{color:var(--ink-soft);margin:0 0 28px;max-width:60ch;font-size:14.5p
 }
 @keyframes bounce{0%,100%{transform:translateY(0);}50%{transform:translateY(-14px);}}
 
+/* Upper-school ambient crawler */
+#board .crawler{
+  position:absolute; font-size:clamp(34px,5vw,54px); z-index:1; pointer-events:none;
+  animation: crawl-wander 26s ease-in-out infinite;
+  filter: drop-shadow(0 6px 10px rgba(0,0,0,.4));
+  will-change: top, left, transform;
+}
+#board .phase-pill, #board .countdown, #board .sub, #board .now-playing{ position:relative; z-index:2; }
+@keyframes crawl-wander{
+  0%{   top:14%; left:8%;  transform:rotate(0deg)   scaleX(1);}
+  14%{  top:22%; left:72%; transform:rotate(20deg)  scaleX(1);}
+  28%{  top:62%; left:86%; transform:rotate(100deg) scaleX(-1);}
+  42%{  top:78%; left:52%; transform:rotate(190deg) scaleX(-1);}
+  58%{  top:66%; left:14%; transform:rotate(250deg) scaleX(1);}
+  72%{  top:30%; left:22%; transform:rotate(300deg) scaleX(1);}
+  86%{  top:18%; left:50%; transform:rotate(340deg) scaleX(1);}
+  100%{ top:14%; left:8%;  transform:rotate(360deg) scaleX(1);}
+}
+
+/* Lower-school maze-to-seat visual */
+.maze-wrap{margin:6px 0 20px;display:flex;flex-direction:column;align-items:center;gap:8px;}
+.maze-wrap svg{width:min(88vw,420px);height:auto;display:block;}
+#mazeRunnerEmoji{transition:none;}
+.maze-caption{font-family:var(--font-playful);font-weight:600;font-size:clamp(13px,2vw,17px);color:#CFE7E3;}
+
 /* toast */
 #toast{
   position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(20px);
@@ -417,6 +442,11 @@ footer.foot{text-align:center;color:var(--ink-soft);font-size:12px;padding:30px 
               <button data-mode="upper" type="button">Upper school (8–12)</button>
             </div>
             <div class="hint">Changes how the display board looks when it's on the projector — playful and bouncy for younger grades, minimal and mature for older ones. Timing works exactly the same either way.</div>
+          </div>
+          <div class="field">
+            <label for="characterSelect">Board character</label>
+            <select id="characterSelect"></select>
+            <div class="hint">Lower school: this character walks a little maze to their seat during entry. Upper school: it wanders around behind the countdown. Purely for fun — swap it any time, or turn it off.</div>
           </div>
         </div>
 
@@ -520,9 +550,22 @@ footer.foot{text-align:center;color:var(--ink-soft);font-size:12px;padding:30px 
 <!-- BOARD VIEW -->
 <div id="board" class="hidden mode-upper">
   <button class="exit-board" id="exitBoardBtn">Exit board</button>
+  <span class="crawler hidden" id="crawler">🕷️</span>
   <div class="bounce-icon" id="boardIcon">🎵</div>
   <div class="teacher-line" id="boardTeacherLine">Room 214</div>
   <div class="phase-pill" id="boardPhasePill"><span class="dot entry"></span><span id="boardPhaseText">Between periods</span></div>
+
+  <div class="maze-wrap hidden" id="mazeWrap">
+    <svg id="mazeSvg" viewBox="0 0 300 130" preserveAspectRatio="xMidYMid meet">
+      <path id="mazePath" d="M14,65 L64,65 L64,18 L128,18 L128,104 L188,104 L188,36 L248,36 L248,92 L286,92"
+            fill="none" stroke="rgba(255,255,255,.35)" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="1 16"/>
+      <circle cx="14" cy="65" r="7" fill="rgba(255,255,255,.25)"/>
+      <text x="286" y="92" font-size="24" text-anchor="middle" dominant-baseline="central">🪑</text>
+      <g id="mazeRunnerG" transform="translate(14,65)"><text id="mazeRunnerEmoji" font-size="22" text-anchor="middle" dominant-baseline="central">🦊</text></g>
+    </svg>
+    <div class="maze-caption">Find your way to your seat!</div>
+  </div>
+
   <div class="countdown" id="boardCountdown">--:--</div>
   <div class="sub" id="boardSub">Waiting for the next scheduled period.</div>
   <div class="now-playing hidden" id="boardNowPlaying">
@@ -702,6 +745,21 @@ function uid(prefix){ return prefix + "_" + Math.random().toString(36).slice(2,9
 
 const WEEKDAY_LETTERS = ["Su","M","Tu","W","Th","F","Sa"];
 const SCHOOL_WEEKDAYS = [1,2,3,4,5]; // Mon–Fri
+const CHARACTER_OPTIONS = [
+  {id:"fox", emoji:"🦊", label:"Fox"},
+  {id:"owl", emoji:"🦉", label:"Owl"},
+  {id:"wolf", emoji:"🐺", label:"Wolf"},
+  {id:"dragon", emoji:"🐉", label:"Dragon"},
+  {id:"spider", emoji:"🕷️", label:"Spider"},
+  {id:"eagle", emoji:"🦅", label:"Eagle"},
+  {id:"tiger", emoji:"🐯", label:"Tiger"},
+  {id:"robot", emoji:"🤖", label:"Robot"},
+  {id:"none", emoji:"", label:"None"}
+];
+function characterEmoji(id){
+  const c = CHARACTER_OPTIONS.find(c=>c.id===id);
+  return c ? c.emoji : "🦊";
+}
 
 function defaultProfile(name){
   const dt = defaultDayType("Every day", SCHOOL_WEEKDAYS.slice());
@@ -709,6 +767,7 @@ function defaultProfile(name){
     id: uid("t"),
     name: name || "New teacher",
     schoolMode: "lower",
+    character: "fox",
     dayTypes: [ dt ],
     uiActiveDayTypeId: dt.id
   };
@@ -759,6 +818,7 @@ state.profiles.forEach(p=>{
   if(!p.uiActiveDayTypeId || !p.dayTypes.find(d=>d.id===p.uiActiveDayTypeId)){
     p.uiActiveDayTypeId = p.dayTypes[0].id;
   }
+  if(!p.character) p.character = "fox";
 });
 
 let uploads = []; // {id, name, vibe} metadata cache (blobs live in IndexedDB)
@@ -1107,12 +1167,14 @@ const Scheduler = (function(){
       const warmupStart = entryEnd + p.gapSeconds;
       const warmupEnd = warmupStart + p.warmupMinutes*60;
       const cleanupStart = end - p.cleanupMinutes*60;
+      const seatWindowTotal = Math.max(1, warmupStart-start);
+      const seatProgress = Math.min(1, Math.max(0, (t-start)/seatWindowTotal));
 
       if(t>=start && t<entryEnd){
-        return {key:p.id+"_entry", period:p, dayType, phase:"entry", label:"Entry — find your seat", remaining: entryEnd-t, sound:p.entrySound, icon:"🎒"};
+        return {key:p.id+"_entry", period:p, dayType, phase:"entry", label:"Entry — find your seat", remaining: entryEnd-t, sound:p.entrySound, icon:"🎒", progress:seatProgress};
       }
       if(t>=entryEnd && t<warmupStart){
-        return {key:p.id+"_gap1", period:p, dayType, phase:"gap", label:"Get settled", remaining: warmupStart-t, sound:null, icon:"⏳"};
+        return {key:p.id+"_gap1", period:p, dayType, phase:"gap", label:"Get settled", remaining: warmupStart-t, sound:null, icon:"⏳", progress:seatProgress};
       }
       if(t>=warmupStart && t<warmupEnd){
         return {key:p.id+"_warmup", period:p, dayType, phase:"warmup", label:"Warm-up", remaining: warmupEnd-t, sound:p.warmupSound, icon:"✏️"};
@@ -1236,6 +1298,13 @@ function renderScheduleView(){
   document.querySelectorAll("#schoolModeToggle button").forEach(btn=>{
     btn.classList.toggle("active", btn.dataset.mode===profile.schoolMode);
   });
+
+  const charSel = document.getElementById("characterSelect");
+  if(!charSel.dataset.built){
+    charSel.innerHTML = CHARACTER_OPTIONS.map(c=>`<option value="${c.id}">${c.emoji?c.emoji+" ":""}${c.label}</option>`).join("");
+    charSel.dataset.built = "1";
+  }
+  charSel.value = profile.character;
 
   renderDayTypeTabs(profile);
   renderDayTypeEditor(profile);
@@ -1447,6 +1516,10 @@ document.getElementById("schoolModeToggle").addEventListener("click",(e)=>{
   saveState();
   renderScheduleView();
 });
+document.getElementById("characterSelect").addEventListener("change",(e)=>{
+  currentProfile().character = e.target.value;
+  saveState();
+});
 document.getElementById("addPeriodBtn").addEventListener("click",()=>{
   const profile = currentProfile();
   const dayType = activeEditingDayType(profile);
@@ -1583,15 +1656,58 @@ document.getElementById("exitBoardBtn").addEventListener("click",()=>{
 const PHASE_DOT_CLASS = {entry:"entry", gap:"warmup", warmup:"warmup", teach:"exit", cleanup:"exit", idle:"entry", noschool:"entry"};
 const PHASE_ICON = {entry:"🎒", gap:"⏳", warmup:"✏️", teach:"📚", cleanup:"🧹", idle:"🕒", noschool:"🌙"};
 
+let mazePathLen = null;
+function getMazePathLength(){
+  if(mazePathLen===null){
+    try{ mazePathLen = document.getElementById("mazePath").getTotalLength(); }
+    catch(e){ mazePathLen = 0; }
+  }
+  return mazePathLen;
+}
+
 function updateBoardUI(profile, ph){
   const board = document.getElementById("board");
   if(board.classList.contains("hidden")) return;
 
   document.getElementById("boardPhaseText").textContent = ph.label;
   document.querySelector("#boardPhasePill .dot").className = "dot " + (PHASE_DOT_CLASS[ph.phase]||"entry");
-  document.getElementById("boardIcon").textContent = PHASE_ICON[ph.phase] || "🎵";
   document.getElementById("boardCountdown").textContent = ph.phase==="noschool" ? "--:--" : Scheduler.fmtCountdown(ph.remaining);
   document.getElementById("boardClockOfDay").textContent = Scheduler.fmtClock();
+
+  const isLower = profile.schoolMode==="lower";
+  const emoji = characterEmoji(profile.character);
+  const showMaze = isLower && emoji && (ph.phase==="entry" || ph.phase==="gap");
+  const mazeWrap = document.getElementById("mazeWrap");
+  const boardIconEl = document.getElementById("boardIcon");
+
+  if(showMaze){
+    mazeWrap.classList.remove("hidden");
+    boardIconEl.classList.add("hidden");
+    document.getElementById("mazeRunnerEmoji").textContent = emoji;
+    const len = getMazePathLength();
+    if(len){
+      const pathEl = document.getElementById("mazePath");
+      const pt = pathEl.getPointAtLength((ph.progress||0) * len);
+      document.getElementById("mazeRunnerG").setAttribute("transform", `translate(${pt.x},${pt.y})`);
+    }
+  } else {
+    mazeWrap.classList.add("hidden");
+    if(isLower){
+      boardIconEl.classList.remove("hidden");
+      boardIconEl.textContent = PHASE_ICON[ph.phase] || "🎵";
+    } else {
+      boardIconEl.classList.add("hidden");
+    }
+  }
+
+  const crawlerEl = document.getElementById("crawler");
+  const showCrawler = !isLower && emoji && ph.phase!=="teach" && ph.phase!=="noschool";
+  if(showCrawler){
+    crawlerEl.textContent = emoji;
+    crawlerEl.classList.remove("hidden");
+  } else {
+    crawlerEl.classList.add("hidden");
+  }
 
   let teacherLine = profile.name || "Classroom";
   if(profile.dayTypes.length > 1 && ph.dayType){
