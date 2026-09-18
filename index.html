@@ -505,7 +505,7 @@ footer.foot{text-align:center;color:var(--ink-soft);font-size:12px;padding:30px 
 
         <div class="card">
           <h3 style="margin:0 0 4px;font-family:var(--font-display);font-size:16px;">Built-in tracks</h3>
-          <p style="color:var(--ink-soft);font-size:13px;margin:0 0 16px;">Grouped by vibe — Entry usually wants Upbeat, Warm-up wants Instrumental or White noise, Clean-up wants a Chime.</p>
+          <p style="color:var(--ink-soft);font-size:13px;margin:0 0 16px;">Grouped by vibe — Entry works well with Jungle, Lullaby, or Café; Warm-up with Piano, Ambient, or Lo-fi; Clean-up with Upbeat.</p>
           <div class="sound-grid" id="builtinSoundGrid"></div>
         </div>
 
@@ -635,7 +635,7 @@ footer.foot{text-align:center;color:var(--ink-soft);font-size:12px;padding:30px 
         </g>
       </g>
     </svg>
-    <div class="maze-caption">Racing to your seat!</div>
+    <div class="maze-caption">Walk calmly to your seat</div>
   </div>
 
   <div class="countdown" id="boardCountdown">--:--</div>
@@ -949,24 +949,642 @@ function defaultPeriod(label, schoolMode){
 }
 
 /* ============================================================
-   BUILT-IN SOUND LIBRARY (procedurally generated, royalty free)
-   No square-wave "beep" tones anywhere — everything below uses soft
-   sine/triangle voices with real attack/decay envelopes so it reads
-   as music or nature ambience, not an alarm.
+   SONG ENGINE
+   Real chord progressions + bass + melody + soft drums, played through
+   a shared reverb so the tracks feel like actual songs instead of a
+   repeating arpeggio. Everything is synthesized (no audio files), so
+   it stays royalty-free and works offline.
+============================================================ */
+const SongEngine = (function(){
+  const mtof = m => 440*Math.pow(2, (m-69)/12);
+
+  function mulberry32(a){
+    return function(){
+      a |= 0; a = a + 0x6D2B79F5 | 0;
+      let t = Math.imul(a ^ a >>> 15, 1 | a);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+
+  /* ---------- shared buffers (one per audio context) ---------- */
+  const irCache = new WeakMap();
+  function getIR(c){
+    if(irCache.has(c)) return irCache.get(c);
+    const len = Math.floor(c.sampleRate * 2.8);
+    const ir = c.createBuffer(2, len, c.sampleRate);
+    for(let ch=0; ch<2; ch++){
+      const d = ir.getChannelData(ch);
+      let lp = 0;
+      for(let i=0;i<len;i++){
+        const x = i/len;
+        // darker tail: one-pole lowpass on the noise, exponential-ish decay
+        lp += ((Math.random()*2-1) - lp) * 0.35;
+        d[i] = lp * Math.pow(1-x, 3.4);
+      }
+    }
+    irCache.set(c, ir);
+    return ir;
+  }
+  const noiseCache = new WeakMap();
+  function getNoise(c){
+    if(noiseCache.has(c)) return noiseCache.get(c);
+    const len = Math.floor(c.sampleRate * 2);
+    const b = c.createBuffer(1, len, c.sampleRate);
+    const d = b.getChannelData(0);
+    for(let i=0;i<len;i++) d[i] = Math.random()*2-1;
+    noiseCache.set(c, b);
+    return b;
+  }
+
+  /* ---------- instruments ----------
+     signature: (ctx, destination, frequencyHz, startTime, durationSec, velocity) */
+  function piano(c, dest, f, t, dur, v){
+    const out = c.createGain();
+    const lp = c.createBiquadFilter();
+    lp.type = "lowpass"; lp.Q.value = 0.4;
+    lp.frequency.setValueAtTime(Math.min(f*6, 3800), t);
+    lp.frequency.exponentialRampToValueAtTime(Math.max(f*1.5, 350), t+1.8);
+    lp.connect(out); out.connect(dest);
+    const hold = Math.max(dur, 0.25);
+    const end = t + hold + 0.9;
+    out.gain.setValueAtTime(0.0001, t);
+    out.gain.linearRampToValueAtTime(v, t+0.01);
+    out.gain.exponentialRampToValueAtTime(v*0.45, t+0.45);
+    out.gain.exponentialRampToValueAtTime(0.0008, end);
+    [[1,1,0],[2,0.28,0],[3,0.10,0],[4,0.04,0],[1,0.5,4]].forEach(([m,w,cents])=>{
+      const o = c.createOscillator(); o.type = "sine";
+      o.frequency.value = f*m; o.detune.value = cents;
+      const og = c.createGain(); og.gain.value = w/1.9;
+      o.connect(og); og.connect(lp);
+      o.start(t); o.stop(end+0.05);
+    });
+  }
+
+  function epiano(c, dest, f, t, dur, v){
+    const out = c.createGain();
+    const lp = c.createBiquadFilter();
+    lp.type = "lowpass"; lp.frequency.value = 2200; lp.Q.value = 0.3;
+    lp.connect(out); out.connect(dest);
+    const hold = Math.max(dur, 0.25);
+    const end = t + hold + 1.0;
+    out.gain.setValueAtTime(0.0001, t);
+    out.gain.linearRampToValueAtTime(v, t+0.012);
+    out.gain.exponentialRampToValueAtTime(v*0.5, t+0.6);
+    out.gain.exponentialRampToValueAtTime(0.0008, end);
+    [[1,1],[2,0.22],[6,0.03]].forEach(([m,w])=>{
+      const o = c.createOscillator(); o.type = "sine"; o.frequency.value = f*m;
+      const og = c.createGain(); og.gain.value = w/1.25;
+      if(m===6){ // tiny "tine" that fades almost instantly
+        og.gain.setValueAtTime(w/1.25, t);
+        og.gain.exponentialRampToValueAtTime(0.0005, t+0.12);
+      }
+      o.connect(og); og.connect(lp);
+      o.start(t); o.stop(end+0.05);
+    });
+  }
+
+  function marimba(c, dest, f, t, dur, v){
+    const out = c.createGain(); out.connect(dest);
+    const end = t + 0.65;
+    out.gain.setValueAtTime(0.0001, t);
+    out.gain.linearRampToValueAtTime(v, t+0.006);
+    out.gain.exponentialRampToValueAtTime(0.0008, end);
+    const o1 = c.createOscillator(); o1.type = "sine"; o1.frequency.value = f;
+    const o2 = c.createOscillator(); o2.type = "sine"; o2.frequency.value = f*3.9;
+    const g2 = c.createGain();
+    g2.gain.setValueAtTime(0.22, t);
+    g2.gain.exponentialRampToValueAtTime(0.0005, t+0.1);
+    o1.connect(out); o2.connect(g2); g2.connect(out);
+    o1.start(t); o1.stop(end+0.05); o2.start(t); o2.stop(t+0.15);
+  }
+
+  function musicbox(c, dest, f, t, dur, v){
+    const out = c.createGain(); out.connect(dest);
+    const end = t + 1.7;
+    out.gain.setValueAtTime(0.0001, t);
+    out.gain.linearRampToValueAtTime(v, t+0.004);
+    out.gain.exponentialRampToValueAtTime(0.0008, end);
+    const o1 = c.createOscillator(); o1.type = "sine"; o1.frequency.value = f;
+    const o2 = c.createOscillator(); o2.type = "sine"; o2.frequency.value = f*3.01;
+    const g2 = c.createGain();
+    g2.gain.setValueAtTime(0.2, t);
+    g2.gain.exponentialRampToValueAtTime(0.0005, t+0.35);
+    o1.connect(out); o2.connect(g2); g2.connect(out);
+    o1.start(t); o1.stop(end+0.05); o2.start(t); o2.stop(t+0.4);
+  }
+
+  function pluck(c, dest, f, t, dur, v){
+    const out = c.createGain();
+    const lp = c.createBiquadFilter();
+    lp.type = "lowpass"; lp.Q.value = 0.5;
+    lp.frequency.setValueAtTime(Math.min(f*7, 4000), t);
+    lp.frequency.exponentialRampToValueAtTime(Math.max(f*1.4, 300), t+0.28);
+    lp.connect(out); out.connect(dest);
+    const end = t + Math.max(dur, 0.15) + 0.3;
+    out.gain.setValueAtTime(0.0001, t);
+    out.gain.linearRampToValueAtTime(v, t+0.005);
+    out.gain.exponentialRampToValueAtTime(0.0008, end);
+    const o = c.createOscillator(); o.type = "triangle"; o.frequency.value = f;
+    o.connect(lp); o.start(t); o.stop(end+0.05);
+  }
+
+  function bass(c, dest, f, t, dur, v){
+    const out = c.createGain(); out.connect(dest);
+    const end = t + dur + 0.15;
+    out.gain.setValueAtTime(0.0001, t);
+    out.gain.linearRampToValueAtTime(v, t+0.03);
+    out.gain.exponentialRampToValueAtTime(v*0.55, t+Math.max(dur*0.6, 0.08));
+    out.gain.linearRampToValueAtTime(0.0001, end);
+    const o1 = c.createOscillator(); o1.type = "sine"; o1.frequency.value = f;
+    const o2 = c.createOscillator(); o2.type = "triangle"; o2.frequency.value = f;
+    const g2 = c.createGain(); g2.gain.value = 0.25;
+    o1.connect(out); o2.connect(g2); g2.connect(out);
+    o1.start(t); o1.stop(end+0.05); o2.start(t); o2.stop(end+0.05);
+  }
+
+  function pad(c, dest, freqs, t, dur, v){
+    const out = c.createGain();
+    const lp = c.createBiquadFilter();
+    lp.type = "lowpass"; lp.frequency.value = 750; lp.Q.value = 0.3;
+    lp.connect(out); out.connect(dest);
+    const att = Math.min(1.1, dur*0.4), rel = 1.3;
+    out.gain.setValueAtTime(0.0001, t);
+    out.gain.linearRampToValueAtTime(v, t+att);
+    out.gain.setValueAtTime(v, t+Math.max(att, dur-0.2));
+    out.gain.linearRampToValueAtTime(0.0001, t+dur+rel);
+    const per = 1/(freqs.length*2);
+    freqs.forEach(f=>{
+      [-7, 7].forEach(cents=>{
+        const o = c.createOscillator(); o.type = "sawtooth";
+        o.frequency.value = f; o.detune.value = cents;
+        const og = c.createGain(); og.gain.value = per;
+        o.connect(og); og.connect(lp);
+        o.start(t); o.stop(t+dur+rel+0.05);
+      });
+    });
+  }
+
+  const INST = {piano, epiano, marimba, musicbox, pluck, bass};
+
+  /* ---------- soft percussion ---------- */
+  function noiseHit(c, dest, t, type, freq, q, attack, decay, v){
+    const s = c.createBufferSource(); s.buffer = getNoise(c);
+    const f = c.createBiquadFilter(); f.type = type; f.frequency.value = freq; f.Q.value = q;
+    const g = c.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(v, t+attack);
+    g.gain.exponentialRampToValueAtTime(0.0005, t+attack+decay);
+    s.connect(f); f.connect(g); g.connect(dest);
+    s.start(t, Math.random()*1.5); s.stop(t+attack+decay+0.05);
+  }
+  function kick(c, dest, t, v){
+    const o = c.createOscillator(); o.type = "sine";
+    o.frequency.setValueAtTime(115, t);
+    o.frequency.exponentialRampToValueAtTime(46, t+0.12);
+    const g = c.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(v, t+0.004);
+    g.gain.exponentialRampToValueAtTime(0.0005, t+0.32);
+    o.connect(g); g.connect(dest); o.start(t); o.stop(t+0.36);
+  }
+  function snare(c, dest, t, v){
+    noiseHit(c, dest, t, "bandpass", 2200, 0.7, 0.002, 0.15, v);
+    const o = c.createOscillator(); o.type = "sine"; o.frequency.value = 190;
+    const g = c.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(v*0.5, t+0.003);
+    g.gain.exponentialRampToValueAtTime(0.0005, t+0.09);
+    o.connect(g); g.connect(dest); o.start(t); o.stop(t+0.12);
+  }
+  function hat(c, dest, t, v){ noiseHit(c, dest, t, "highpass", 6500, 0.5, 0.002, 0.045, v); }
+  function shaker(c, dest, t, v){ noiseHit(c, dest, t, "bandpass", 5500, 1.0, 0.012, 0.08, v); }
+
+  /* ---------- harmony helpers ---------- */
+  const PC = {C:0,"C#":1,D:2,Eb:3,E:4,F:5,"F#":6,G:7,Ab:8,A:9,Bb:10,B:11};
+  const CT = {
+    maj:[0,4,7], min:[0,3,7], maj7:[0,4,7,11], min7:[0,3,7,10], dom7:[0,4,7,10],
+    maj9:[0,4,7,11,14], min9:[0,3,7,10,14], add9:[0,4,7,14], six:[0,4,7,9],
+    dom13:[0,4,10,14,21]
+  };
+  // bass-register root (MIDI 38–49) + chord-tone intervals
+  function K(name, type){
+    let r = 36 + PC[name];
+    if(r < 38) r += 12;
+    return {r, t: CT[type]};
+  }
+  const MAJ = [0,2,4,5,7,9,11];
+  const NATMIN = [0,2,3,5,7,8,10];
+  const PENT = [0,2,4,7,9];
+
+  function voice(ch, lo, hi){
+    const s = ch.t.map(iv=>{
+      let m = ch.r + iv, guard = 0;
+      while(m < lo && guard++ < 10) m += 12;
+      while(m > hi && guard++ < 20) m -= 12;
+      return m;
+    });
+    return Array.from(new Set(s)).sort((a,b)=>a-b);
+  }
+
+  /* ---------- melody writer ----------
+     Rhythm templates are [startBeat, lengthInBeats]. Strong-beat notes snap
+     to chord tones, everything else steps through the scale, so phrases
+     sound intentional and always resolve. */
+  const RH = {
+    A:[[0,1.5],[1.5,0.5],[2,2]], B:[[0,1],[1,1],[2,2]], C:[[0.5,1],[1.5,1],[2.5,1.5]],
+    D:[[0,4]], E:[[0,1],[1,0.5],[1.5,0.5],[2,1],[3,1]], F:[[2,1],[3,1]],
+    G:[[0,2],[2,1.5]], H:[[0,0.5],[0.5,0.5],[1,1],[2,2]], I:[[0,1],[1,1],[2,1],[3,1]],
+    W1:[[0,1.5],[1.5,0.5],[2,1]], W2:[[0,1],[1,1],[2,1]], W3:[[0,3]], W4:[[0,2],[2,1]]
+  };
+
+  function buildMelody(spec, rng){
+    const M = spec.layers.melody;
+    const scalePcs = spec.scale.map(x => (spec.key + x) % 12);
+    const pool = [];
+    for(let m=M.lo; m<=M.hi; m++) if(scalePcs.includes(m % 12)) pool.push(m);
+    const mid = Math.floor(pool.length/2);
+    const formBars = spec.chords.length * 2;
+    const bars = [];
+    let idx = mid;
+    for(let b=0; b<formBars; b++){
+      const ch = spec.chords[b % spec.chords.length];
+      const cpcs = ch.t.map(x => (ch.r + x) % 12);
+      const rhythm = RH[M.plan[b % M.plan.length]];
+      const notes = [];
+      rhythm.forEach(([beat, len], n)=>{
+        if(n === 0 || beat === 0 || beat === 2 || len >= 1.5){
+          // snap to nearest chord tone in the pool
+          let best = idx, bd = 99;
+          pool.forEach((m, i)=>{
+            if(cpcs.includes(m % 12)){
+              const d = Math.abs(i - idx);
+              if(d < bd){ bd = d; best = i; }
+            }
+          });
+          idx = best;
+        } else {
+          const dir = idx > mid+2 ? -1 : (idx < mid-2 ? 1 : (rng() < 0.5 ? -1 : 1));
+          idx += dir * (rng() < 0.72 ? 1 : 2);
+          idx = Math.max(0, Math.min(pool.length-1, idx));
+        }
+        notes.push({
+          beat, dur: Math.max(0.4, len*0.95), midi: pool[idx],
+          vel: (beat === 0 ? 0.78 : 0.55 + rng()*0.2)
+        });
+      });
+      bars.push(notes);
+    }
+    return bars;
+  }
+
+  /* ---------- the song player ---------- */
+  function create(spec, c, master){
+    const beats = spec.beats || 4;
+    const beat = 60 / spec.bpm;
+    const bar = beat * beats;
+    const swing = spec.swing || 0;
+    const L = spec.layers || {};
+    const rng = mulberry32(spec.seed || 7);
+    const drng = mulberry32((spec.seed || 7) + 99);
+    const chords = spec.chords;
+    const formBars = chords.length * 2;
+    const melody = (L.melody ? buildMelody(spec, rng) : null);
+
+    // bus: instruments -> send -> (dry + reverb) -> out -> gentle compressor -> master
+    const out = c.createGain();
+    const comp = c.createDynamicsCompressor();
+    comp.threshold.value = -20; comp.knee.value = 18; comp.ratio.value = 3;
+    comp.attack.value = 0.02; comp.release.value = 0.3;
+    const send = c.createGain();
+    const conv = c.createConvolver(); conv.buffer = getIR(c);
+    const wet = c.createGain(); wet.gain.value = (spec.reverb == null ? 0.32 : spec.reverb);
+    send.connect(out); send.connect(conv); conv.connect(wet); wet.connect(out);
+    out.connect(comp); comp.connect(master);
+
+    const now = c.currentTime;
+    out.gain.setValueAtTime(0.0001, now);
+    out.gain.linearRampToValueAtTime(spec.vol || 0.6, now + 1.5);
+
+    let nextBarIdx = 0;
+    let nextBarTime = now + 0.12;
+    let stopped = false;
+
+    const bt = (ts, b) => ts + (b + ((b % 1) === 0.5 ? swing : 0)) * beat;
+    const play = (inst, midi, t, durBeats, vel) => INST[inst](c, send, mtof(midi), t, durBeats*beat, vel);
+
+    function scheduleBar(i, ts){
+      const ch = chords[i % chords.length];
+      const nx = chords[(i+1) % chords.length];
+
+      if(L.pad){
+        const fr = voice(ch, L.pad.lo || 50, L.pad.hi || 69).map(mtof);
+        pad(c, send, fr, ts, bar + 0.4, L.pad.vol);
+      }
+
+      if(L.bass){
+        const B = L.bass, v = B.vol;
+        const put = (midi, b, d, vv) => play("bass", midi, bt(ts,b), d, vv);
+        if(B.style === "root"){
+          if(beats === 3) put(ch.r, 0, 2.6, v);
+          else { put(ch.r, 0, 2.2, v); put(ch.r+7, 2, 1.7, v*0.65); }
+        } else if(B.style === "walk"){
+          const app = nx.r + (nx.r > 41 ? -1 : 1) ;
+          put(ch.r, 0, 0.9, v); put(ch.r + ch.t[1], 1, 0.9, v*0.85);
+          put(ch.r + 7, 2, 0.9, v*0.85); put(app, 3, 0.9, v*0.8);
+        } else if(B.style === "lofi"){
+          put(ch.r, 0, 1.4, v); put(ch.r, 2.5, 0.8, v*0.7);
+          if(i % 2 === 1) put(ch.r+7, 1.75, 0.5, v*0.55);
+        } else if(B.style === "upbeat"){
+          put(ch.r, 0, 0.55, v); put(ch.r+7, 1, 0.55, v*0.75);
+          put(ch.r, 2, 0.55, v*0.9); put(ch.r+7, 3, 0.55, v*0.75);
+        }
+      }
+
+      if(L.comp){
+        const C = L.comp, v = C.vol, inst = C.inst;
+        const vc = voice(ch, C.lo || 52, C.hi || 74);
+        const n = vc.length;
+        const strum = (arr, b, dBeats, vel, gap) => arr.forEach((m, k)=>
+          play(inst, m, bt(ts,b) + k*(gap||0.014), dBeats, vel * (1 - k*0.06)));
+        if(C.style === "arp"){
+          const seq = [0,2,1,2,3,2,1,2];
+          for(let s=0; s<beats*2; s++){
+            play(inst, vc[seq[s % 8] % n], bt(ts, s*0.5), 1.6, v * (s%2 ? 0.7 : 1));
+          }
+        } else if(C.style === "arpSlow"){
+          const seq = [0,2,1,3];
+          for(let s=0; s<beats; s++) play(inst, vc[seq[s % 4] % n], bt(ts, s), 2.2, v * (s===0 ? 1 : 0.75));
+        } else if(C.style === "block"){
+          strum(vc, 0, 3.4, v, 0.02);
+          strum(vc.slice(1), 2, 1.8, v*0.55, 0.02);
+        } else if(C.style === "jazz"){
+          strum(vc, 0, 1.2, v, 0.012);
+          strum(vc, 1.5, 0.9, v*0.75, 0.012);
+          if(i % 2 === 1) strum(vc.slice(1), 3.5, 0.4, v*0.5, 0.012);
+        } else if(C.style === "lofi"){
+          strum(vc, 0, 3.3, v, 0.02);
+          strum(vc.slice(1), (i % 2 ? 1.5 : 2.5), 1.3, v*0.6, 0.02);
+        } else if(C.style === "waltz"){
+          const up = vc.slice(Math.max(0, n-3));
+          strum(up, 1, 0.9, v, 0.01); strum(up, 2, 0.9, v*0.85, 0.01);
+        } else if(C.style === "pluckArp"){
+          const seq = [0,1,2,1,0,1,2,3];
+          for(let s=0; s<beats*2; s++){
+            play(inst, vc[seq[s % 8] % n], bt(ts, s*0.5), 0.45, v * (s%2 ? 0.7 : 1));
+          }
+        } else if(C.style === "offbeat"){
+          const up = vc.slice(Math.max(0, n-3));
+          for(let s=0; s<beats; s++) strum(up, s+0.5, 0.3, v, 0.008);
+        }
+      }
+
+      if(L.drums){
+        const D = L.drums, v = D.vol;
+        if(D.style === "lofi"){
+          kick(c, send, bt(ts,0), v);
+          kick(c, send, bt(ts,2.5), v*0.85);
+          if(drng() < 0.35) kick(c, send, bt(ts,1.75), v*0.6);
+          snare(c, send, bt(ts,1), v*0.5); snare(c, send, bt(ts,3), v*0.55);
+          for(let k=0; k<8; k++) if(drng() > 0.08) hat(c, send, bt(ts, k*0.5), v*(k%2 ? 0.28 : 0.42));
+        } else if(D.style === "shaker"){
+          if(D.kick !== false){ kick(c, send, bt(ts,0), v*0.7); kick(c, send, bt(ts,2), v*0.55); }
+          for(let k=0; k<beats*2; k++) shaker(c, send, bt(ts, k*0.5), v*(k%2 ? 0.75 : 0.45));
+        } else if(D.style === "brush"){
+          [1,3].forEach(b => snare(c, send, bt(ts,b), v*0.32));
+          [0,1,1.5,2,3,3.5].forEach(b => hat(c, send, bt(ts,b), v*0.3));
+        }
+      }
+
+      if(melody && L.melody){
+        const M = L.melody;
+        melody[i % formBars].forEach(n=> play(M.inst, n.midi, bt(ts, n.beat), n.dur, n.vel * M.vol));
+      }
+    }
+
+    return {
+      schedule(until){
+        if(stopped) return;
+        while(nextBarTime < until){
+          scheduleBar(nextBarIdx, nextBarTime);
+          nextBarIdx++; nextBarTime += bar;
+        }
+      },
+      stop(fadeMs){
+        stopped = true;
+        const t = c.currentTime;
+        out.gain.cancelScheduledValues(t);
+        out.gain.setValueAtTime(Math.max(out.gain.value, 0.0001), t);
+        out.gain.linearRampToValueAtTime(0.0001, t + fadeMs/1000);
+        setTimeout(()=>{ try{ out.disconnect(); }catch(e){} }, fadeMs + 120);
+      }
+    };
+  }
+
+  /* ============================================================
+     SONG LIBRARY
+  ============================================================ */
+  const SONGS = {
+    // ---------- PIANO: warm ballads with real chord movement ----------
+    piano1: {
+      name:"Morning Light", bpm:72, key:60, scale:MAJ, vol:0.215, reverb:0.38, seed:11,
+      chords:[K("C","maj7"),K("A","min7"),K("F","maj7"),K("G","add9"), K("C","maj7"),K("E","min7"),K("F","maj7"),K("G","add9")],
+      layers:{
+        pad:{vol:0.09}, bass:{style:"root", vol:0.5},
+        comp:{style:"arp", inst:"piano", vol:0.30, lo:52, hi:74},
+        melody:{inst:"piano", vol:0.55, lo:72, hi:86, plan:["A","B","A","G","A","C","E","D"]}
+      }
+    },
+    piano2: {
+      name:"Quiet Afternoon", bpm:66, key:65, scale:MAJ, vol:0.228, reverb:0.4, seed:23,
+      chords:[K("F","maj7"),K("D","min7"),K("Bb","maj7"),K("C","add9"), K("F","maj7"),K("A","min7"),K("Bb","maj7"),K("C","dom7")],
+      layers:{
+        pad:{vol:0.09}, bass:{style:"root", vol:0.5},
+        comp:{style:"block", inst:"piano", vol:0.30, lo:53, hi:74},
+        melody:{inst:"piano", vol:0.55, lo:69, hi:84, plan:["G","B","G","D","A","B","C","D"]}
+      }
+    },
+    piano3: {
+      name:"Piano & Rain", bpm:60, key:57, scale:NATMIN, vol:0.253, reverb:0.42, seed:37,
+      chords:[K("A","min7"),K("F","maj7"),K("C","add9"),K("G","add9"), K("A","min7"),K("D","min7"),K("F","maj7"),K("E","min7")],
+      layers:{
+        pad:{vol:0.09}, bass:{style:"root", vol:0.45},
+        comp:{style:"arpSlow", inst:"piano", vol:0.30, lo:50, hi:72},
+        melody:{inst:"piano", vol:0.5, lo:69, hi:84, plan:["G","D","F","D","G","D","A","D"]}
+      },
+      nature:{type:"noise", cutoff:2200, vol:0.05, filterType:"highpass"}
+    },
+
+    // ---------- LULLABY: 3/4 waltzes ----------
+    lullaby1: {
+      name:"Music Box Lullaby", bpm:84, beats:3, key:67, scale:MAJ, vol:0.253, reverb:0.4, seed:41,
+      chords:[K("G","maj"),K("E","min"),K("C","maj"),K("D","maj"), K("G","maj"),K("B","min"),K("C","maj"),K("D","dom7")],
+      layers:{
+        pad:{vol:0.06}, bass:{style:"root", vol:0.35},
+        comp:{style:"waltz", inst:"musicbox", vol:0.20, lo:60, hi:79},
+        melody:{inst:"musicbox", vol:0.5, lo:79, hi:91, plan:["W1","W2","W1","W4","W1","W2","W1","W3"]}
+      }
+    },
+    lullaby2: {
+      name:"Sleepy Moon Waltz", bpm:72, beats:3, key:62, scale:MAJ, vol:0.251, reverb:0.42, seed:53,
+      chords:[K("D","maj"),K("B","min"),K("G","maj"),K("A","maj"), K("D","maj"),K("F#","min"),K("G","maj"),K("A","dom7")],
+      layers:{
+        pad:{vol:0.07}, bass:{style:"root", vol:0.35},
+        comp:{style:"waltz", inst:"piano", vol:0.22, lo:57, hi:76},
+        melody:{inst:"musicbox", vol:0.5, lo:74, hi:88, plan:["W1","W1","W2","W3","W4","W2","W1","W3"]}
+      }
+    },
+
+    // ---------- JUNGLE: marimba/kalimba over a nature bed ----------
+    jungle1: {
+      name:"Jungle Morning", bpm:88, key:60, scale:PENT, vol:0.287, reverb:0.28, seed:61,
+      chords:[K("C","maj"),K("A","min"),K("F","maj"),K("G","maj"), K("F","maj"),K("G","maj"),K("C","maj"),K("A","min")],
+      layers:{
+        pad:{vol:0.06}, bass:{style:"root", vol:0.4},
+        comp:{style:"pluckArp", inst:"marimba", vol:0.17, lo:60, hi:84},
+        melody:{inst:"marimba", vol:0.5, lo:72, hi:88, plan:["H","A","B","C","H","B","A","G"]}
+      },
+      nature:{type:"jungle", chirpMin:1500, chirpMax:3200, noiseVol:0.06}
+    },
+    jungle2: {
+      name:"Rainforest Hush", bpm:66, key:62, scale:PENT, vol:0.29, reverb:0.4, seed:71,
+      chords:[K("D","maj"),K("B","min"),K("G","maj"),K("D","maj"), K("G","maj"),K("A","maj"),K("D","maj"),K("B","min")],
+      layers:{
+        pad:{vol:0.1}, bass:{style:"root", vol:0.35},
+        comp:{style:"arpSlow", inst:"musicbox", vol:0.15, lo:62, hi:80},
+        melody:{inst:"marimba", vol:0.45, lo:74, hi:86, plan:["A","D","B","F","G","D","A","D"]}
+      },
+      nature:{type:"jungle", chirpMin:2500, chirpMax:4500, noiseVol:0.05}
+    },
+
+    // ---------- CAFÉ: brushed-drum jazz ----------
+    cafe1: {
+      name:"Café Jazz Morning", bpm:88, swing:0.12, key:60, scale:MAJ, vol:0.212, reverb:0.3, seed:81,
+      chords:[K("D","min9"),K("G","dom13"),K("C","maj9"),K("A","dom7"), K("D","min9"),K("G","dom13"),K("E","min7"),K("A","dom7")],
+      layers:{
+        bass:{style:"walk", vol:0.5},
+        comp:{style:"jazz", inst:"epiano", vol:0.26, lo:55, hi:74},
+        drums:{style:"brush", vol:0.5},
+        melody:{inst:"piano", vol:0.5, lo:67, hi:81, plan:["C","F","G","D","C","F","A","D"]}
+      }
+    },
+    cafe2: {
+      name:"Sunday Espresso", bpm:96, swing:0.08, key:67, scale:MAJ, vol:0.217, reverb:0.28, seed:91,
+      chords:[K("G","maj7"),K("E","min7"),K("A","min7"),K("D","dom7"), K("G","maj7"),K("B","min7"),K("A","min7"),K("D","dom7")],
+      layers:{
+        bass:{style:"walk", vol:0.5},
+        comp:{style:"jazz", inst:"piano", vol:0.24, lo:55, hi:74},
+        drums:{style:"shaker", vol:0.4, kick:false},
+        melody:{inst:"epiano", vol:0.5, lo:69, hi:83, plan:["A","C","B","F","A","C","G","D"]}
+      }
+    },
+
+    // ---------- AMBIENT: slow pads, sparse melody ----------
+    ambient1: {
+      name:"Gentle Ambient Hush", bpm:48, key:60, scale:MAJ, vol:0.393, reverb:0.5, seed:101,
+      chords:[K("C","maj9"),K("A","min9"),K("F","maj9"),K("G","add9"), K("C","maj9"),K("E","min7"),K("F","maj9"),K("G","add9")],
+      layers:{
+        pad:{vol:0.2, lo:48, hi:72}, bass:{style:"root", vol:0.3},
+        melody:{inst:"piano", vol:0.4, lo:72, hi:86, plan:["D","F","D","G"]}
+      }
+    },
+    ambient2: {
+      name:"Ambient Ocean Drift", bpm:44, key:62, scale:MAJ, vol:0.391, reverb:0.5, seed:111,
+      chords:[K("D","maj9"),K("B","min9"),K("G","maj9"),K("A","add9"), K("D","maj9"),K("G","maj9"),K("B","min9"),K("A","add9")],
+      layers:{
+        pad:{vol:0.2, lo:50, hi:74}, bass:{style:"root", vol:0.25},
+        melody:{inst:"musicbox", vol:0.3, lo:79, hi:91, plan:["D","F"]}
+      },
+      nature:{type:"noise", cutoff:600, vol:0.16, filterType:"lowpass"}
+    },
+
+    // ---------- LO-FI HIP-HOP ----------
+    hiphop1: {
+      name:"Lo-fi Study Beat", bpm:76, swing:0.10, key:65, scale:MAJ, vol:0.238, reverb:0.3, seed:121,
+      chords:[K("F","maj7"),K("E","min7"),K("D","min9"),K("C","maj9"), K("F","maj7"),K("A","min7"),K("D","min9"),K("G","dom7")],
+      layers:{
+        bass:{style:"lofi", vol:0.55},
+        comp:{style:"lofi", inst:"epiano", vol:0.24, lo:53, hi:72},
+        drums:{style:"lofi", vol:0.6},
+        melody:{inst:"epiano", vol:0.45, lo:69, hi:81, plan:["F","C","G","D","F","C","B","D"]}
+      },
+      nature:{type:"noise", cutoff:5000, vol:0.012, filterType:"highpass"}
+    },
+    hiphop2: {
+      name:"Lo-fi Sunday", bpm:70, swing:0.12, key:57, scale:NATMIN, vol:0.24, reverb:0.32, seed:131,
+      chords:[K("A","min9"),K("D","min9"),K("F","maj7"),K("E","dom7"), K("A","min9"),K("D","min9"),K("F","maj7"),K("G","dom7")],
+      layers:{
+        bass:{style:"lofi", vol:0.55},
+        comp:{style:"lofi", inst:"epiano", vol:0.24, lo:53, hi:72},
+        drums:{style:"lofi", vol:0.6},
+        melody:{inst:"piano", vol:0.45, lo:69, hi:81, plan:["C","F","G","D","F","C","G","D"]}
+      },
+      nature:{type:"noise", cutoff:5000, vol:0.012, filterType:"highpass"}
+    },
+
+    // ---------- UPBEAT: cheerful clean-up songs ----------
+    upbeat1: {
+      name:"Tidy-Up Tune", bpm:112, key:60, scale:MAJ, vol:0.304, reverb:0.18, seed:141,
+      chords:[K("C","maj"),K("F","maj"),K("G","maj"),K("C","maj"), K("C","maj"),K("A","min"),K("F","maj"),K("G","maj")],
+      layers:{
+        bass:{style:"upbeat", vol:0.45},
+        comp:{style:"pluckArp", inst:"marimba", vol:0.2, lo:60, hi:84},
+        drums:{style:"shaker", vol:0.5},
+        melody:{inst:"marimba", vol:0.55, lo:72, hi:88, plan:["H","B","A","G","H","I","A","D"]}
+      }
+    },
+    upbeat2: {
+      name:"Sunshine Cleanup", bpm:116, key:67, scale:MAJ, vol:0.286, reverb:0.18, seed:151,
+      chords:[K("G","maj"),K("D","maj"),K("E","min"),K("C","maj"), K("G","maj"),K("D","maj"),K("C","maj"),K("D","maj")],
+      layers:{
+        bass:{style:"upbeat", vol:0.45},
+        comp:{style:"offbeat", inst:"pluck", vol:0.2, lo:55, hi:79},
+        drums:{style:"shaker", vol:0.5},
+        melody:{inst:"marimba", vol:0.55, lo:74, hi:90, plan:["H","A","B","G","H","C","I","D"]}
+      }
+    },
+    upbeat3: {
+      name:"Pack-Up Groove", bpm:104, key:65, scale:MAJ, vol:0.271, reverb:0.2, seed:161,
+      chords:[K("F","maj"),K("Bb","maj"),K("C","maj"),K("F","maj"), K("F","maj"),K("D","min"),K("Bb","maj"),K("C","maj")],
+      layers:{
+        bass:{style:"upbeat", vol:0.45},
+        comp:{style:"pluckArp", inst:"piano", vol:0.24, lo:53, hi:76},
+        drums:{style:"shaker", vol:0.5},
+        melody:{inst:"pluck", vol:0.55, lo:72, hi:86, plan:["A","B","H","G","A","I","H","D"]}
+      }
+    }
+  };
+
+  return { create, SONGS };
+})();
+const SONGS = SongEngine.SONGS;
+
+/* ============================================================
+   BUILT-IN SOUND LIBRARY
+   Songs are synthesized by SongEngine above (royalty free, works offline).
+   Each has real chord changes, bass and melody, played through reverb.
 ============================================================ */
 const BUILTIN_SOUNDS = [
-  {id:"jungle1", name:"Jungle Morning", vibe:"jungle", gen:"jungleMorning"},
-  {id:"jungle2", name:"Rainforest Hush", vibe:"jungle", gen:"jungleHush"},
-  {id:"lullaby1", name:"Lullaby Music Box", vibe:"lullaby", gen:"lullabyBox"},
-  {id:"piano1", name:"Soft Piano Keys", vibe:"piano", gen:"pianoSoft"},
-  {id:"piano2", name:"Piano Daydream", vibe:"piano", gen:"pianoDream"},
-  {id:"cafe1", name:"Café Ambience", vibe:"cafe", gen:"cafeAmbience"},
-  {id:"ambient1", name:"Gentle Ambient Hush", vibe:"ambient", gen:"noiseSoft"},
-  {id:"ambient2", name:"Ambient Ocean Drift", vibe:"ambient", gen:"noiseOcean"},
-  {id:"hiphop1", name:"Lo-fi Hip-Hop Beat", vibe:"hiphop", gen:"hiphopLofi"},
-  {id:"upbeat1", name:"Tidy-Up Tune", vibe:"upbeat", gen:"upbeatTidy"},
-  {id:"upbeat2", name:"Sunshine Cleanup", vibe:"upbeat", gen:"upbeatSunshine"}
-];
+  {id:"piano1", vibe:"piano"}, {id:"piano2", vibe:"piano"}, {id:"piano3", vibe:"piano"},
+  {id:"lullaby1", vibe:"lullaby"}, {id:"lullaby2", vibe:"lullaby"},
+  {id:"jungle1", vibe:"jungle"}, {id:"jungle2", vibe:"jungle"},
+  {id:"cafe1", vibe:"cafe"}, {id:"cafe2", vibe:"cafe"},
+  {id:"ambient1", vibe:"ambient"}, {id:"ambient2", vibe:"ambient"},
+  {id:"hiphop1", vibe:"hiphop"}, {id:"hiphop2", vibe:"hiphop"},
+  {id:"upbeat1", vibe:"upbeat"}, {id:"upbeat2", vibe:"upbeat"}, {id:"upbeat3", vibe:"upbeat"}
+].map(s => ({...s, name: SONGS[s.id].name}));
+
+/* ------------------------------------------------------------
+   LICENSED / RECORDED TRACKS (optional)
+   Real recorded music sounds better than anything synthesized. To add
+   tracks you have the rights to bundle, host the audio files somewhere
+   your site can reach (e.g. Rewired's site or GitHub Pages) and list them:
+     {id:"lt1", name:"Soft Morning", vibe:"piano", url:"https://…/soft-morning.mp3"}
+   They show up alongside the built-in songs and work in "Random by vibe".
+   If a file can't be loaded, a built-in song of the same vibe plays instead.
+------------------------------------------------------------ */
+const LICENSED_TRACKS = [];
+LICENSED_TRACKS.forEach(t => BUILTIN_SOUNDS.push({id:"lt_"+t.id, name:t.name, vibe:t.vibe, url:t.url}));
 function builtinById(id){ return BUILTIN_SOUNDS.find(s=>s.id===id); }
 
 // Earlier builds used a different vibe taxonomy and different built-in
@@ -1092,97 +1710,6 @@ const AudioEngine = (function(){
     prev.stop(fadeMs || 250);
   }
 
-  // Generative chime/arpeggio loop (entry / cleanup vibes)
-  function playArp(pattern, opts){
-    const c = getCtx();
-    const g = c.createGain();
-    g.gain.value = 0;
-    g.connect(masterGain);
-    g.gain.linearRampToValueAtTime(opts.vol||0.5, c.currentTime + 0.4);
-    let stopped = false;
-    let timer = null;
-
-    function scheduleLoop(){
-      if(stopped) return;
-      const now = c.currentTime;
-      let t = now + 0.05;
-      pattern.notes.forEach((freq, idx)=>{
-        const osc = c.createOscillator();
-        osc.type = opts.wave || "sine";
-        osc.frequency.value = freq;
-        const ng = c.createGain();
-        ng.gain.value = 0;
-        osc.connect(ng); ng.connect(g);
-        const noteStart = t + idx*pattern.step;
-        ng.gain.setValueAtTime(0, noteStart);
-        ng.gain.linearRampToValueAtTime(1, noteStart+0.02);
-        ng.gain.exponentialRampToValueAtTime(0.001, noteStart+pattern.step*0.9);
-        osc.start(noteStart);
-        osc.stop(noteStart+pattern.step);
-      });
-      const loopLen = pattern.notes.length*pattern.step + (pattern.pause||0.6);
-      timer = setTimeout(scheduleLoop, loopLen*1000);
-    }
-    scheduleLoop();
-
-    return {
-      stop(fadeMs){
-        stopped = true;
-        if(timer) clearTimeout(timer);
-        const c2 = getCtx();
-        g.gain.cancelScheduledValues(c2.currentTime);
-        g.gain.setValueAtTime(g.gain.value, c2.currentTime);
-        g.gain.linearRampToValueAtTime(0, c2.currentTime + fadeMs/1000);
-        setTimeout(()=>{ try{g.disconnect();}catch(e){} }, fadeMs+80);
-      }
-    };
-  }
-
-  // Generative pad drone (instrumental vibe)
-  function playPad(freqs, opts){
-    const c = getCtx();
-    const g = c.createGain();
-    g.gain.value = 0;
-    g.connect(masterGain);
-    g.gain.linearRampToValueAtTime(opts.vol||0.35, c.currentTime + 1.2);
-    const oscs = [];
-    const filter = c.createBiquadFilter();
-    filter.type = "lowpass";
-    filter.frequency.value = 1200;
-    filter.connect(g);
-    freqs.forEach((f,i)=>{
-      const o = c.createOscillator();
-      o.type = i%2===0 ? "sine" : "triangle";
-      o.frequency.value = f;
-      const og = c.createGain();
-      og.gain.value = 0.5/freqs.length;
-      o.connect(og); og.connect(filter);
-      o.start();
-      oscs.push(o);
-    });
-    // slow LFO on filter for movement
-    const lfo = c.createOscillator();
-    lfo.frequency.value = 0.07;
-    const lfoGain = c.createGain();
-    lfoGain.gain.value = 300;
-    lfo.connect(lfoGain); lfoGain.connect(filter.frequency);
-    lfo.start();
-
-    return {
-      stop(fadeMs){
-        const c2 = getCtx();
-        g.gain.cancelScheduledValues(c2.currentTime);
-        g.gain.setValueAtTime(g.gain.value, c2.currentTime);
-        g.gain.linearRampToValueAtTime(0, c2.currentTime + fadeMs/1000);
-        setTimeout(()=>{
-          oscs.forEach(o=>{try{o.stop();}catch(e){}});
-          try{lfo.stop();}catch(e){}
-          try{g.disconnect();}catch(e){}
-        }, fadeMs+120);
-      }
-    };
-  }
-
   // Generative filtered noise loop (whitenoise vibe)
   function playNoise(opts){
     const c = getCtx();
@@ -1244,77 +1771,6 @@ const AudioEngine = (function(){
     };
   }
 
-  // Warm chord pad + a whisper of high-passed noise (café murmur)
-  function playCafe(){
-    const pad = playPad([220,277,330,415], {vol:0.16});
-    const hiss = playNoise({cutoff:2600, vol:0.045, filterType:"highpass"});
-    return {
-      stop(fadeMs){ pad.stop(fadeMs); hiss.stop(fadeMs); }
-    };
-  }
-
-  // Soft lo-fi hip-hop loop: gentle low kick, sustained triangle chord,
-  // brushed noise "hat" — everything filtered/rounded, no click or beep.
-  function playLofi(opts){
-    const c = getCtx();
-    const g = c.createGain();
-    g.gain.value = 0;
-    g.connect(masterGain);
-    g.gain.linearRampToValueAtTime(opts.vol||0.35, c.currentTime + 0.6);
-    const chord = [174.6, 220, 261.6, 329.6]; // soft Fmaj7-ish
-    const beatLen = 0.5;
-    let stopped = false;
-    let timer = null;
-    function loop(){
-      if(stopped) return;
-      const t0 = c.currentTime + 0.05;
-      [0,2].forEach(b=>{
-        const o = c.createOscillator(); o.type = "sine";
-        const og = c.createGain(); og.gain.value = 0;
-        o.connect(og); og.connect(g);
-        const kt = t0 + b*beatLen;
-        o.frequency.setValueAtTime(95, kt);
-        o.frequency.exponentialRampToValueAtTime(38, kt+0.18);
-        og.gain.setValueAtTime(0.45, kt);
-        og.gain.exponentialRampToValueAtTime(0.001, kt+0.22);
-        o.start(kt); o.stop(kt+0.25);
-      });
-      chord.forEach(f=>{
-        const o = c.createOscillator(); o.type = "triangle"; o.frequency.value = f;
-        const og = c.createGain(); og.gain.value = 0;
-        o.connect(og); og.connect(g);
-        og.gain.setValueAtTime(0, t0);
-        og.gain.linearRampToValueAtTime(0.13/chord.length, t0+0.4);
-        og.gain.exponentialRampToValueAtTime(0.001, t0 + beatLen*4 - 0.2);
-        o.start(t0); o.stop(t0 + beatLen*4);
-      });
-      [1,3].forEach(b=>{
-        const buf = makeNoiseBuffer(0.08);
-        const src = c.createBufferSource(); src.buffer = buf;
-        const filt = c.createBiquadFilter(); filt.type = "highpass"; filt.frequency.value = 4000;
-        const og = c.createGain(); og.gain.value = 0;
-        src.connect(filt); filt.connect(og); og.connect(g);
-        const ht = t0 + b*beatLen;
-        og.gain.setValueAtTime(0.06, ht);
-        og.gain.exponentialRampToValueAtTime(0.001, ht+0.06);
-        src.start(ht);
-      });
-      timer = setTimeout(loop, beatLen*4*1000);
-    }
-    loop();
-    return {
-      stop(fadeMs){
-        stopped = true;
-        if(timer) clearTimeout(timer);
-        const c2 = getCtx();
-        g.gain.cancelScheduledValues(c2.currentTime);
-        g.gain.setValueAtTime(g.gain.value, c2.currentTime);
-        g.gain.linearRampToValueAtTime(0, c2.currentTime + fadeMs/1000);
-        setTimeout(()=>{ try{g.disconnect();}catch(e){} }, fadeMs+150);
-      }
-    };
-  }
-
   // Uploaded file playback
   async function playBlob(blob, opts){
     const c = getCtx();
@@ -1338,25 +1794,80 @@ const AudioEngine = (function(){
     };
   }
 
-  const GENS = {
-    jungleMorning: ()=>playJungle({chirpMin:1200, chirpMax:2400, noiseVol:0.10}),
-    jungleHush: ()=>playJungle({chirpMin:2500, chirpMax:4500, noiseVol:0.07}),
-    lullabyBox: ()=>playArp({notes:[392,440,523,587,659], step:0.85, pause:2.2}, {wave:"sine", vol:0.26}),
-    pianoSoft: ()=>playArp({notes:[261.6,329.6,392,466.2], step:0.4, pause:0.9}, {wave:"triangle", vol:0.28}),
-    pianoDream: ()=>playArp({notes:[293.7,349.2,440,523.3], step:0.55, pause:1.3}, {wave:"sine", vol:0.24}),
-    cafeAmbience: ()=>playCafe(),
-    noiseSoft: ()=>playNoise({cutoff:1400, vol:0.22}),
-    noiseOcean: ()=>playNoise({cutoff:600, vol:0.28}),
-    hiphopLofi: ()=>playLofi({vol:0.35}),
-    upbeatTidy: ()=>playArp({notes:[330,392,440,523], step:0.2, pause:0.5}, {wave:"triangle", vol:0.32}),
-    upbeatSunshine: ()=>playArp({notes:[349,440,523,392], step:0.22, pause:0.45}, {wave:"triangle", vol:0.3})
-  };
+  // Play one of the synthesized songs (+ optional nature bed underneath)
+  function playSong(spec){
+    const c = getCtx();
+    const song = SongEngine.create(spec, c, masterGain);
+    let stopped = false, timer = null;
+    const pump = ()=>{
+      if(stopped) return;
+      song.schedule(c.currentTime + 6);
+      timer = setTimeout(pump, 1000);
+    };
+    pump();
+    let nat = null;
+    const n = spec.nature;
+    if(n){
+      nat = n.type === "jungle"
+        ? playJungle({chirpMin:n.chirpMin, chirpMax:n.chirpMax, noiseVol:n.noiseVol})
+        : playNoise({cutoff:n.cutoff, vol:n.vol, filterType:n.filterType});
+    }
+    return {
+      stop(fadeMs){
+        stopped = true;
+        if(timer) clearTimeout(timer);
+        song.stop(fadeMs);
+        if(nat) nat.stop(fadeMs);
+      }
+    };
+  }
+
+  // Recorded track from a URL (see LICENSED_TRACKS). Decoded once, then cached.
+  const urlCache = new Map();
+  async function playUrl(url, opts){
+    const c = getCtx();
+    let audioBuf = urlCache.get(url);
+    if(!audioBuf){
+      const res = await fetch(url);
+      if(!res.ok) throw new Error("HTTP "+res.status);
+      audioBuf = await c.decodeAudioData(await res.arrayBuffer());
+      urlCache.set(url, audioBuf);
+    }
+    const src = c.createBufferSource();
+    src.buffer = audioBuf; src.loop = !!opts.loop;
+    const g = c.createGain();
+    g.gain.value = 0;
+    src.connect(g); g.connect(masterGain);
+    g.gain.linearRampToValueAtTime(opts.vol||0.7, c.currentTime + 0.6);
+    src.start();
+    return {
+      stop(fadeMs){
+        const c2 = getCtx();
+        g.gain.cancelScheduledValues(c2.currentTime);
+        g.gain.setValueAtTime(g.gain.value, c2.currentTime);
+        g.gain.linearRampToValueAtTime(0, c2.currentTime + fadeMs/1000);
+        setTimeout(()=>{ try{src.stop();}catch(e){} try{g.disconnect();}catch(e){} }, fadeMs+100);
+      }
+    };
+  }
 
   async function playBuiltin(id){
     const s = builtinById(id);
     if(!s) return;
     stopActive(200);
-    active = GENS[s.gen]();
+    if(s.url){
+      try{
+        active = await playUrl(s.url, {loop:true, vol:0.7});
+        return s.name;
+      }catch(e){
+        // file missing/blocked: fall back to a built-in song from the same vibe
+        const alt = BUILTIN_SOUNDS.find(b => !b.url && b.vibe === s.vibe);
+        if(!alt) return null;
+        active = playSong(SONGS[alt.id]);
+        return alt.name;
+      }
+    }
+    active = playSong(SONGS[id]);
     return s.name;
   }
 
@@ -1409,7 +1920,7 @@ const Scheduler = (function(){
 
   function resolveSoundLabel(soundCfg){
     if(soundCfg.mode==="fixed" && soundCfg.fixedId){
-      if(soundCfg.fixedId.startsWith("bi_")){
+      if(builtinById(soundCfg.fixedId)){
         const s = builtinById(soundCfg.fixedId);
         return s ? s.name : "Track";
       } else {
@@ -1423,7 +1934,7 @@ const Scheduler = (function(){
   async function playSoundCfg(soundCfg){
     let list;
     if(soundCfg.mode==="fixed" && soundCfg.fixedId){
-      if(soundCfg.fixedId.startsWith("bi_")){
+      if(builtinById(soundCfg.fixedId)){
         currentTrackLabel = await AudioEngine.playBuiltin(soundCfg.fixedId);
         return;
       } else {
