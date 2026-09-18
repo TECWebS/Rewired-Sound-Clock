@@ -342,12 +342,15 @@ p.page-desc{color:var(--ink-soft);margin:0 0 28px;max-width:60ch;font-size:14.5p
   100%{ top:14%; left:8%;  transform:scaleX(1);}
 }
 
-/* Lower-school maze-to-seat visual */
-.maze-wrap{margin:6px 0 20px;display:flex;flex-direction:column;align-items:center;gap:8px;}
-.maze-wrap svg{width:min(88vw,420px);height:auto;display:block;}
-.maze-caption{font-family:var(--font-playful);font-weight:600;font-size:clamp(13px,2vw,17px);color:#CFE7E3;}
+/* Maze-to-seat visual — carved wooden maze + rolling marble, used for both
+   lower and upper school as the entry-phase display */
+.maze-wrap{margin:6px 0 20px;display:flex;flex-direction:column;align-items:center;gap:10px;}
+.maze-wrap svg{width:min(92vw,620px);height:auto;display:block;filter:drop-shadow(0 10px 24px rgba(0,0,0,.4));}
+.maze-caption{font-family:var(--font-playful);font-weight:600;font-size:clamp(14px,2.2vw,19px);color:#CFE7E3;}
+.maze-ball-spin{animation:ball-roll .55s linear infinite;transform-origin:0 0;}
+@keyframes ball-roll{from{transform:rotate(0deg);}to{transform:rotate(360deg);}}
 
-/* ---- Creature rig animation (shared by maze runner + crawler) ---- */
+/* ---- Creature rig animation (used by the upper-school ambient crawler) ---- */
 .leg{animation:leg-swing .7s ease-in-out infinite;}
 .leg.phase-b{animation-delay:-.35s;}
 @keyframes leg-swing{0%{transform:rotate(-27deg);}50%{transform:rotate(27deg);}100%{transform:rotate(-27deg);}}
@@ -374,7 +377,6 @@ p.page-desc{color:var(--ink-soft);margin:0 0 28px;max-width:60ch;font-size:14.5p
 .kind-bird .creature-rig{animation:soar-drift 2.4s ease-in-out infinite;}
 @keyframes step-bounce{0%,100%{transform:translateY(0);}50%{transform:translateY(-4px);}}
 @keyframes soar-drift{0%,100%{transform:translateY(0) rotate(0deg);}50%{transform:translateY(-6px) rotate(-2deg);}}
-#mazeRunnerRig .creature-rig{transform:translate(0,0);}
 
 /* toast */
 #toast{
@@ -592,13 +594,48 @@ footer.foot{text-align:center;color:var(--ink-soft);font-size:12px;padding:30px 
 
   <div class="maze-wrap hidden" id="mazeWrap">
     <svg id="mazeSvg" viewBox="0 0 300 130" preserveAspectRatio="xMidYMid meet">
-      <path id="mazePath" d="M14,65 L64,65 L64,18 L128,18 L128,104 L188,104 L188,36 L248,36 L248,92 L286,92"
-            fill="none" stroke="rgba(255,255,255,.35)" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="1 16"/>
-      <circle cx="14" cy="65" r="7" fill="rgba(255,255,255,.25)"/>
-      <text x="286" y="92" font-size="24" text-anchor="middle" dominant-baseline="central">🪑</text>
-      <g id="mazeRunnerG" transform="translate(14,65)"><g id="mazeRunnerFacing" transform="scale(1,1)"><g id="mazeRunnerRig" transform="scale(0.32)"></g></g></g>
+      <defs>
+        <linearGradient id="woodGrad" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#dcb794"/>
+          <stop offset="0.5" stop-color="#c99a71"/>
+          <stop offset="1" stop-color="#a97c52"/>
+        </linearGradient>
+        <radialGradient id="ballGrad" cx="35%" cy="30%" r="75%">
+          <stop offset="0" stop-color="#f2fffb"/>
+          <stop offset="40%" style="stop-color:var(--maze-ball-color,#2FD9C4)"/>
+          <stop offset="100%" stop-color="#12665c"/>
+        </radialGradient>
+      </defs>
+      <!-- solid wood block -->
+      <rect x="2" y="2" width="296" height="126" rx="14" fill="url(#woodGrad)" stroke="#8a6440" stroke-width="2"/>
+      <!-- carved corridor: three stacked strokes fake a rounded groove -->
+      <path id="mazePath" d="M14,112 L14,55 L55,55 L55,15 L230,15 L230,60 L270,60 L270,20 L286,20"
+            fill="none" stroke="#3a2418" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M14,112 L14,55 L55,55 L55,15 L230,15 L230,60 L270,60 L270,20 L286,20"
+            fill="none" stroke="#4a2f20" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M14,112 L14,55 L55,55 L55,15 L230,15 L230,60 L270,60 L270,20 L286,20"
+            fill="none" stroke="#5c3c28" stroke-width="15" stroke-linecap="round" stroke-linejoin="round"/>
+      <!-- start hole -->
+      <circle cx="14" cy="112" r="8" fill="#2a1810"/>
+      <!-- goal -->
+      <circle cx="286" cy="20" r="8" fill="#2a1810"/>
+      <text x="286" y="20" font-size="12" text-anchor="middle" dominant-baseline="central">🪑</text>
+      <!-- embedded countdown panel, sits in the room the corridor loops around -->
+      <g class="maze-panel">
+        <rect x="115" y="45" width="70" height="40" rx="6" fill="#5c5c5c" stroke="#3f3f3f" stroke-width="2"/>
+        <rect x="119" y="49" width="62" height="32" rx="4" fill="#2c2c2c"/>
+        <text id="mazeTimeText" x="150" y="66" text-anchor="middle" dominant-baseline="central" font-family="var(--font-display)" font-size="17" font-weight="700" fill="#eafff9">0:00</text>
+      </g>
+      <!-- the marble -->
+      <g id="mazeRunnerG" transform="translate(14,112)">
+        <ellipse cx="1.5" cy="6" rx="7" ry="2.2" fill="rgba(0,0,0,.3)"/>
+        <g class="maze-ball-spin">
+          <circle r="8" fill="url(#ballGrad)"/>
+          <path d="M-4,-4 A6,6 0 0 1 4,-4" stroke="rgba(0,0,0,.22)" stroke-width="1.4" fill="none"/>
+        </g>
+      </g>
     </svg>
-    <div class="maze-caption">Find your way to your seat!</div>
+    <div class="maze-caption">Racing to your seat!</div>
   </div>
 
   <div class="countdown" id="boardCountdown">--:--</div>
@@ -1917,9 +1954,14 @@ function getMazePathLength(){
   }
   return mazePathLen;
 }
-let mazeRunnerChar = null;
+let mazeBallColorChar = null;
 let crawlerChar = null;
-let lastMazeX = null;
+
+function ballColorForCharacter(id){
+  const meta = characterMeta(id);
+  if(meta.kind==="none" || !meta.colors || !meta.colors.body) return "#2FD9C4";
+  return meta.colors.body;
+}
 
 function updateBoardUI(profile, ph){
   const board = document.getElementById("board");
@@ -1932,28 +1974,24 @@ function updateBoardUI(profile, ph){
 
   const isLower = profile.schoolMode==="lower";
   const hasCharacter = profile.character && profile.character!=="none";
-  const showMaze = isLower && hasCharacter && ph.phase==="entry";
+  // The maze-and-marble entry visual is universal — both school modes get it.
+  const showMaze = ph.phase==="entry";
   const mazeWrap = document.getElementById("mazeWrap");
   const boardIconEl = document.getElementById("boardIcon");
 
   if(showMaze){
     mazeWrap.classList.remove("hidden");
     boardIconEl.classList.add("hidden");
-    if(mazeRunnerChar !== profile.character){
-      document.getElementById("mazeRunnerRig").innerHTML = buildCreatureMarkup(profile.character);
-      mazeRunnerChar = profile.character;
-      lastMazeX = null;
+    if(mazeBallColorChar !== profile.character){
+      document.getElementById("mazeSvg").style.setProperty("--maze-ball-color", ballColorForCharacter(profile.character));
+      mazeBallColorChar = profile.character;
     }
+    document.getElementById("mazeTimeText").textContent = Scheduler.fmtCountdown(ph.remaining);
     const len = getMazePathLength();
     if(len){
       const pathEl = document.getElementById("mazePath");
       const pt = pathEl.getPointAtLength((ph.progress||0) * len);
       document.getElementById("mazeRunnerG").setAttribute("transform", `translate(${pt.x},${pt.y})`);
-      if(lastMazeX !== null){
-        const facing = pt.x < lastMazeX ? "-1,1" : "1,1";
-        document.getElementById("mazeRunnerFacing").setAttribute("transform", `scale(${facing})`);
-      }
-      lastMazeX = pt.x;
     }
   } else {
     mazeWrap.classList.add("hidden");
@@ -1966,7 +2004,7 @@ function updateBoardUI(profile, ph){
   }
 
   const crawlerEl = document.getElementById("crawler");
-  const showCrawler = !isLower && hasCharacter && ph.phase!=="teach" && ph.phase!=="noschool";
+  const showCrawler = !isLower && hasCharacter && ph.phase!=="teach" && ph.phase!=="noschool" && ph.phase!=="entry";
   if(showCrawler){
     if(crawlerChar !== profile.character){
       crawlerEl.innerHTML = `<svg viewBox="-65 -75 130 90">${buildCreatureMarkup(profile.character)}</svg>`;
